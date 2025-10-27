@@ -98,7 +98,7 @@ fullscreen = 1
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 
 # (list) features (adds uses-feature -tags to manifest)
-android.features = android.hardware.usb.host
+#android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
 #android.api = 31
