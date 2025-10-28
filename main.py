@@ -13,6 +13,10 @@ from kivy.properties import NumericProperty
 import random
 import math
 
+# Устанавливаем полноэкранный режим для планшета
+Window.fullscreen = 'auto'  # Автоматический полноэкранный режим
+# Или можно использовать: Window.fullscreen = True
+
 class FadeTransitionWidget(Widget):
     """Виджет для плавного перехода с затемнением"""
     alpha = NumericProperty(0)
@@ -63,6 +67,13 @@ class MenuScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.setup_ui()
+        # Обновляем размер при изменении окна
+        Window.bind(on_resize=self.on_window_resize)
+    
+    def on_window_resize(self, window, width, height):
+        """Обновление UI при изменении размера окна"""
+        self.bg_rect.size = Window.size
+        self.update_fade_color(None, self.fade_transition.alpha)
     
     def setup_ui(self):
         # Фоновое изображение
@@ -73,21 +84,21 @@ class MenuScreen(Screen):
         # Основной layout
         layout = BoxLayout(orientation='vertical', padding=50, spacing=20)
         
-        # Заголовок
+        # Заголовок (увеличиваем шрифт для планшета)
         title_label = Label(
             text='NPC Симулятор',
-            font_size='40sp',
+            font_size='48sp',  # Увеличили для планшета
             bold=True,
             color=(1, 1, 1, 1),
             size_hint=(1, 0.3)
         )
         
-        # Кнопки меню
-        buttons_layout = BoxLayout(orientation='vertical', spacing=15, size_hint=(1, 0.6))
+        # Кнопки меню (увеличиваем размеры для планшета)
+        buttons_layout = BoxLayout(orientation='vertical', spacing=25, size_hint=(1, 0.6))
         
         self.start_button = Button(
             text='Начать игру',
-            font_size='24sp',
+            font_size='32sp',  # Увеличили для планшета
             background_color=(0.2, 0.6, 0.2, 1),
             size_hint=(1, 0.2)
         )
@@ -95,7 +106,7 @@ class MenuScreen(Screen):
         
         self.settings_button = Button(
             text='Настройки',
-            font_size='24sp',
+            font_size='32sp',  # Увеличили для планшета
             background_color=(0.2, 0.5, 0.8, 1),
             size_hint=(1, 0.2)
         )
@@ -103,7 +114,7 @@ class MenuScreen(Screen):
         
         self.about_button = Button(
             text='Об игре',
-            font_size='24sp',
+            font_size='32sp',  # Увеличили для планшета
             background_color=(0.8, 0.5, 0.2, 1),
             size_hint=(1, 0.2)
         )
@@ -111,7 +122,7 @@ class MenuScreen(Screen):
         
         self.exit_button = Button(
             text='Выход',
-            font_size='24sp',
+            font_size='32sp',  # Увеличили для планшета
             background_color=(0.8, 0.2, 0.2, 1),
             size_hint=(1, 0.2)
         )
@@ -122,10 +133,10 @@ class MenuScreen(Screen):
         buttons_layout.add_widget(self.about_button)
         buttons_layout.add_widget(self.exit_button)
         
-        # Информация внизу
+        # Информация внизу (увеличиваем шрифт)
         info_label = Label(
             text='Управление: WASD/Стрелки - движение, E - взаимодействие с NPC, ESC/P - меню',
-            font_size='14sp',
+            font_size='18sp',  # Увеличили для планшета
             color=(0.7, 0.7, 0.7, 1),
             size_hint=(1, 0.1)
         )
@@ -193,8 +204,8 @@ NPC Симулятор
         """
         about_popup = Popup(
             title='Об игре',
-            content=Label(text=about_text, font_size='16sp'),
-            size_hint=(0.8, 0.6)
+            content=Label(text=about_text, font_size='20sp'),  # Увеличили шрифт
+            size_hint=(0.8, 0.7)  # Увеличили попап для планшета
         )
         about_popup.open()
     
@@ -205,35 +216,37 @@ class SettingsPopup(Popup):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.title = 'Настройки'
-        self.size_hint = (0.7, 0.5)
+        self.size_hint = (0.8, 0.6)  # Увеличили для планшета
         
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
+        layout = BoxLayout(orientation='vertical', padding=30, spacing=20)  # Увеличили отступы
         
         # Настройка количества NPC
         npc_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.3))
-        npc_layout.add_widget(Label(text='Количество NPC:', font_size='18sp'))
-        self.npc_slider_label = Label(text='6', font_size='18sp')
+        npc_layout.add_widget(Label(text='Количество NPC:', font_size='24sp'))  # Увеличили шрифт
+        self.npc_slider_label = Label(text='6', font_size='24sp')  # Увеличили шрифт
         npc_layout.add_widget(self.npc_slider_label)
         layout.add_widget(npc_layout)
         
         # Настройка сложности
         difficulty_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.3))
-        difficulty_layout.add_widget(Label(text='Сложность:', font_size='18sp'))
-        self.difficulty_label = Label(text='Нормальная', font_size='18sp')
+        difficulty_layout.add_widget(Label(text='Сложность:', font_size='24sp'))  # Увеличили шрифт
+        self.difficulty_label = Label(text='Нормальная', font_size='24sp')  # Увеличили шрифт
         difficulty_layout.add_widget(self.difficulty_label)
         layout.add_widget(difficulty_layout)
         
         # Кнопки
-        buttons_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, 0.4))
+        buttons_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, 0.4))
         
         save_button = Button(
             text='Сохранить',
+            font_size='24sp',  # Увеличили шрифт
             background_color=(0.2, 0.6, 0.2, 1)
         )
         save_button.bind(on_press=self.save_settings)
         
         cancel_button = Button(
             text='Отмена',
+            font_size='24sp',  # Увеличили шрифт
             background_color=(0.8, 0.2, 0.2, 1)
         )
         cancel_button.bind(on_press=self.dismiss)
@@ -254,15 +267,15 @@ class PauseMenu(BoxLayout):
         super().__init__(**kwargs)
         self.game_screen = game_screen
         self.orientation = 'vertical'
-        self.padding = 50
-        self.spacing = 20
-        self.size_hint = (0.6, 0.7)
+        self.padding = 60  # Увеличили отступы
+        self.spacing = 25  # Увеличили промежутки
+        self.size_hint = (0.7, 0.8)  # Увеличили для планшета
         self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         
         # Заголовок
         title = Label(
             text='Пауза',
-            font_size='32sp',
+            font_size='40sp',  # Увеличили шрифт
             bold=True,
             size_hint=(1, 0.2)
         )
@@ -270,7 +283,7 @@ class PauseMenu(BoxLayout):
         # Кнопки
         resume_button = Button(
             text='Продолжить',
-            font_size='20sp',
+            font_size='28sp',  # Увеличили шрифт
             background_color=(0.2, 0.6, 0.2, 1),
             size_hint=(1, 0.2)
         )
@@ -278,7 +291,7 @@ class PauseMenu(BoxLayout):
         
         restart_button = Button(
             text='Начать заново',
-            font_size='20sp',
+            font_size='28sp',  # Увеличили шрифт
             background_color=(0.2, 0.5, 0.8, 1),
             size_hint=(1, 0.2)
         )
@@ -286,7 +299,7 @@ class PauseMenu(BoxLayout):
         
         menu_button = Button(
             text='В главное меню',
-            font_size='20sp',
+            font_size='28sp',  # Увеличили шрифт
             background_color=(0.8, 0.5, 0.2, 1),
             size_hint=(1, 0.2)
         )
@@ -295,7 +308,7 @@ class PauseMenu(BoxLayout):
         # Кнопка Назад
         back_button = Button(
             text='Назад',
-            font_size='20sp',
+            font_size='28sp',  # Увеличили шрифт
             background_color=(0.5, 0.5, 0.5, 1),
             size_hint=(1, 0.2)
         )
@@ -303,7 +316,7 @@ class PauseMenu(BoxLayout):
         
         exit_button = Button(
             text='Выход',
-            font_size='20sp',
+            font_size='28sp',  # Увеличили шрифт
             background_color=(0.8, 0.2, 0.2, 1),
             size_hint=(1, 0.2)
         )
@@ -353,6 +366,13 @@ class GameScreen(Screen):
         
         self.pause_menu = None
         self.is_paused = False
+        
+        # Обновляем размер при изменении окна
+        Window.bind(on_resize=self.on_window_resize)
+    
+    def on_window_resize(self, window, width, height):
+        """Обновление UI при изменении размера окна"""
+        self.update_fade_color(None, self.fade_transition.alpha)
     
     def update_fade_color(self, instance, value):
         """Обновление цвета затемнения"""
@@ -1359,4 +1379,4 @@ class GameApp(App):
         return sm
 
 if __name__ == '__main__':
-    GameApp().run()                       
+    GameApp().run()
