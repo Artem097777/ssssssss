@@ -52,7 +52,8 @@ requirements = python3,kivy
 #icon.filename = %(source.dir)s/icon.png
 
 # (str) Supported orientation (one of landscape, sensorLandscape, portrait or all)
-orientation = portrait
+# Changed from portrait to landscape for better full-screen usage on tablets like Xiaomi Pad 6
+orientation = landscape
 
 # (list) List of service to declare
 #services = NAME:ENTRYPOINT_TO_PY,NAME2:ENTRYPOINT2_TO_PY
@@ -238,7 +239,7 @@ android.arch = armeabi-v7a
 # (str) python-for-android git clone directory (if empty, it will be automatically cloned from github)
 #p4a.source_dir =
 
-# (str) The directory in which python-for-android should look for your own build recipes (if any)
+# (str) python-for-android recipe directory
 #p4a.local_recipes =
 
 # (str) Filename to the hook for p4a
