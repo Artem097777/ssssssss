@@ -1,36 +1,35 @@
-from ursina import *
-from kivy.core.window import Window
+import pygame
+import sys
 
-app = Ursina()
+# Инициализация
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+clock = pygame.time.Clock()
 
-# Настройка окна для мобильных
-window.borderless = False
-window.color = color.black
-window.exit_button.enabled = False
+# Игрок
+player_x, player_y = 400, 300
+player_speed = 5
 
-# Игрок (куб как временный аватар)
-player = Entity(
-    model='cube',
-    color=color.orange,
-    scale=(1, 2, 1),
-    position=(0, 0.5, 0)
-)
+# Основной цикл
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
 
-# Камера следует за игроком
-camera.parent = player
-camera.position = (0, 2, -5)
-camera.rotation = (15, 0, 0)
+    # Управление (клавиатура)
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_LEFT]:
+        player_x -= player_speed
+    if keys[pygame.K_RIGHT]:
+        player_x += player_speed
+    if keys[pygame.K_UP]:
+        player_y -= player_speed
+    if keys[pygame.K_DOWN]:
+        player_y += player_speed
 
-# Управление (ПК-версия для тестирования)
-def update():
-    # Передвижение WASD
-    if held_keys['w']: player.z += time.dt * 5
-    if held_keys['s']: player.z -= time.dt * 5
-    if held_keys['a']: player.x -= time.dt * 5
-    if held_keys['d']: player.x += time.dt * 5
-
-    # Поворот камеры мышью (на ПК)
-    camera.rotation_y += mouse.velocity[0] * 20
-    camera.rotation_x -= mouse.velocity[1] * 20
-
-app.run()
+    # Отрисовка
+    screen.fill((0, 0, 0))
+    pygame.draw.circle(screen, (255, 0, 0), (player_x, player_y), 20)
+    pygame.display.flip()
+    clock.tick(60)
