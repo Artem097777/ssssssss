@@ -1,74 +1,48 @@
 import pygame
 import sys
-import math
 
-# Инициализация
+# Инициализация Pygame
 pygame.init()
-screen = pygame.display.set_mode((480, 320))  # Разрешение для телефона
-clock = pygame.time.Clock()
 
-# Параметры игрока
-player_x, player_y = 2.0, 2.0
-player_angle = 0
-player_speed = 0.05
+# Размеры экрана (под Android лучше использовать относительные значения)
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Android Pygame")
 
-# Карта (1 — стена, 0 — проход)
-map_grid = [
-    [1,1,1,1,1],
-    [1,0,0,0,1],
-    [1,0,1,0,1],
-    [1,0,0,0,1],
-    [1,1,1,1,1]
-]
+# Цвета
+WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
 
-def draw_wall(screen, x, y, height, color):
-    pygame.draw.rect(screen, color, (x, 160 - height//2, 2, height))
-
-def raycast(player_x, player_y, angle, map_grid):
-    # Упрощённый рейкастинг
-    distance = 0
-    while distance < 20:
-        test_x = int(player_x + distance * math.cos(angle))
-        test_y = int(player_y + distance * math.sin(angle))
-        if (test_x < 0 or test_x >= len(map_grid) or
-            test_y < 0 or test_y >= len(map_grid[0]) or
-            map_grid[test_x][test_y] == 1):
-            return distance
-        distance += 0.1
-    return 20
+# Позиция квадрата
+x, y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+square_size = 100
 
 # Основной цикл
+clock = pygame.time.Clock()
 running = True
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # При касании перемещаем квадрат в точку касания
+            x, y = event.pos
+            # Корректируем позицию, чтобы квадрат был по центру касания
+            x -= square_size // 2
+            y -= square_size // 2
 
-    # Управление (виртуальные кнопки)
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT]:
-        player_angle -= 0.03
-    if keys[pygame.K_RIGHT]:
-        player_angle += 0.03
-    if keys[pygame.K_UP]:
-        player_x += player_speed * math.cos(player_angle)
-        player_y += player_speed * math.sin(player_angle)
-    if keys[pygame.K_DOWN]:
-        player_x -= player_speed * math.cos(player_angle)
-        player_y -= player_speed * math.sin(player_angle)
+    # Ограничиваем позицию квадрата границами экрана
+    x = max(0, min(x, SCREEN_WIDTH - square_size))
+    y = max(0, min(y, SCREEN_HEIGHT - square_size))
 
-    # Отрисовка
-    screen.fill((0, 0, 0))  # Чёрный фон
-
-    # Рейкастинг для стен
-    for x in range(0, 480, 2):
-        angle = player_angle + (x - 240) * 0.002  # Угол луча
-        distance = raycast(player_x, player_y, angle, map_grid)
-        height = max(0, int(200 / distance))
-        draw_wall(screen, x, 160, height, (100, 100, 100))
+    # Рисуем фон и квадрат
+    screen.fill(WHITE)
+    pygame.draw.rect(screen, BLUE, (x, y, square_size, square_size))
 
     pygame.display.flip()
-    clock.tick(30)
+    clock.tick(60)  # 60 FPS
 
 pygame.quit()
 sys.exit()
