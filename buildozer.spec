@@ -52,7 +52,7 @@ requirements = python3,kivy,openssl
 
 # (str) Supported orientation (one of landscape, sensorLandscape, portrait or all)
 # Changed from portrait to landscape for better full-screen usage on tablets like Xiaomi Pad 6
-orientation = portrait
+orientation = landscape
 
 # (list) List of service to declare
 #services = NAME:ENTRYPOINT_TO_PY,NAME2:ENTRYPOINT2_TO_PY
@@ -88,7 +88,7 @@ fullscreen = 1
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
 
 # (int) Target Android API, should be as high as possible.
-#android.api = 27
+android.api = 30
 
 # (int) Minimum API your APK will support.
 #android.minapi = 21
