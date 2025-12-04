@@ -1,7 +1,24 @@
 from kivy.config import Config
-# Отключаем WM_PenProvider для Windows
-Config.set('input', 'wm_pen', 'disable')
-Config.set('input', 'wm_touch', 'disable')
+
+# Настраиваем конфигурацию для предотвращения предупреждений
+Config.set('kivy', 'log_level', 'error')  # Уменьшаем уровень логов
+Config.set('graphics', 'maxfps', '120')  # Ограничиваем FPS
+
+# Для Windows отключаем проблемные провайдеры
+import platform
+if platform.system() == 'Windows':
+    Config.set('input', 'wm_pen', '')
+    Config.set('input', 'wm_touch', '')
+    Config.set('input', 'wm_touch', '')
+    Config.set('input', 'pen', '')
+    Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
+    Config.set('kivy', 'desktop', 1)
+    
+# Для Android/сенсорных устройств
+Config.set('input', 'mouse', 'mouse,disable_multitouch')
+
+# Прячем системный курсор в полноэкранном режиме
+Config.set('graphics', 'show_cursor', 0)
 
 from kivy.app import App
 from kivy.uix.widget import Widget
@@ -12,17 +29,21 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.slider import Slider
 from kivy.uix.checkbox import CheckBox
-from kivy.uix.dropdown import DropDown
 from kivy.graphics import *
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.properties import NumericProperty, BooleanProperty, StringProperty
 from kivy.uix.popup import Popup
-from kivy.uix.image import Image
-from kivy.core.audio import SoundLoader
+from kivy.uix.gridlayout import GridLayout
+from kivy.logger import Logger
 import math
 import json
 import os
+import random
+
+# Настраиваем логгер для фильтрации предупреждений
+import logging
+logging.getLogger('kivy').setLevel(logging.ERROR)
 
 class VirtualJoystick(Widget):
     def __init__(self, **kwargs):
@@ -217,6 +238,19 @@ class SettingsScreen(Screen):
         invert_layout.add_widget(invert_label)
         invert_layout.add_widget(self.invert_check)
         
+        # Тип управления (новая опция)
+        control_type_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.1))
+        control_label2 = Label(text='Тип управления:', font_size=25)
+        self.control_type_btn = Button(
+            text='Джойстики',
+            font_size=20,
+            size_hint=(0.5, 1),
+            background_color=(0.3, 0.3, 0.5, 1)
+        )
+        self.control_type_btn.bind(on_press=self.toggle_control_type)
+        control_type_layout.add_widget(control_label2)
+        control_type_layout.add_widget(self.control_type_btn)
+        
         # Кнопки
         buttons_layout = BoxLayout(orientation='horizontal', spacing=20, size_hint=(1, 0.2))
         
@@ -255,6 +289,7 @@ class SettingsScreen(Screen):
         content.add_widget(control_label)
         content.add_widget(sens_layout)
         content.add_widget(invert_layout)
+        content.add_widget(control_type_layout)
         
         layout.add_widget(title)
         layout.add_widget(content)
@@ -264,6 +299,15 @@ class SettingsScreen(Screen):
         
         # Загружаем сохраненные настройки
         self.load_settings()
+    
+    def toggle_control_type(self, instance):
+        current = self.control_type_btn.text
+        if current == 'Джойстики':
+            self.control_type_btn.text = 'Кнопки'
+        elif current == 'Кнопки':
+            self.control_type_btn.text = 'Гибрид'
+        else:
+            self.control_type_btn.text = 'Джойстики'
     
     def update_rays_label(self, instance, value):
         self.rays_value.text = str(int(value))
@@ -276,14 +320,15 @@ class SettingsScreen(Screen):
     
     def load_settings(self):
         try:
-            app = App.get_running_app()
             if os.path.exists('settings.json'):
-                with open('settings.json', 'r') as f:
+                with open('settings.json', 'r', encoding='utf-8') as f:
                     settings = json.load(f)
                     self.rays_slider.value = settings.get('rays', 120)
                     self.fps_slider.value = settings.get('fps', 60)
                     self.sens_slider.value = settings.get('sensitivity', 1.5)
                     self.invert_check.active = settings.get('invert_y', False)
+                    control_type = settings.get('control_type', 'Джойстики')
+                    self.control_type_btn.text = control_type
         except:
             pass
     
@@ -292,11 +337,15 @@ class SettingsScreen(Screen):
             'rays': int(self.rays_slider.value),
             'fps': int(self.fps_slider.value),
             'sensitivity': self.sens_slider.value,
-            'invert_y': self.invert_check.active
+            'invert_y': self.invert_check.active,
+            'control_type': self.control_type_btn.text
         }
         
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
+        try:
+            with open('settings.json', 'w', encoding='utf-8') as f:
+                json.dump(settings, f)
+        except:
+            pass
         
         app = App.get_running_app()
         app.apply_settings(settings)
@@ -313,6 +362,7 @@ class SettingsScreen(Screen):
         self.fps_slider.value = 60
         self.sens_slider.value = 1.5
         self.invert_check.active = False
+        self.control_type_btn.text = 'Джойстики'
     
     def go_back(self, instance):
         app = App.get_running_app()
@@ -381,8 +431,12 @@ class MapsScreen(Screen):
         popup.open()
         
         # Возвращаемся в игру
-        Clock.schedule_once(lambda dt: app.sm.current == 'game' or app.sm.current == 'menu', 1)
-        Clock.schedule_once(lambda dt: app.game_screen.start_game(), 1.1)
+        Clock.schedule_once(lambda dt: self.go_to_game(), 1)
+    
+    def go_to_game(self):
+        app = App.get_running_app()
+        app.sm.current = 'game'
+        app.game_screen.start_game()
     
     def go_back(self, instance):
         app = App.get_running_app()
@@ -401,12 +455,13 @@ class GameScreen(Screen):
         self.game_widget.is_paused = False
 
 class PauseMenu(BoxLayout):
-    def __init__(self, game_widget, **kwargs):
+    def __init__(self, game_widget, popup_instance, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
         self.spacing = 20
         self.padding = 50
         self.game_widget = game_widget
+        self.popup_instance = popup_instance
         
         title = Label(
             text='ПАУЗА',
@@ -458,21 +513,21 @@ class PauseMenu(BoxLayout):
     
     def resume_game(self, instance):
         self.game_widget.is_paused = False
-        self.parent.parent.dismiss()
+        self.popup_instance.dismiss()
     
     def restart_game(self, instance):
         self.game_widget.reset_game()
         self.game_widget.is_paused = False
-        self.parent.parent.dismiss()
+        self.popup_instance.dismiss()
     
     def open_settings(self, instance):
+        self.popup_instance.dismiss()
         app = App.get_running_app()
-        self.parent.parent.dismiss()
         app.sm.current = 'settings'
     
     def go_to_menu(self, instance):
+        self.popup_instance.dismiss()
         app = App.get_running_app()
-        self.parent.parent.dismiss()
         app.sm.current = 'menu'
 
 class RaycasterGame(FloatLayout):
@@ -489,26 +544,42 @@ class RaycasterGame(FloatLayout):
             'rays': 120,
             'fps': 60,
             'sensitivity': 1.5,
-            'invert_y': False
+            'invert_y': False,
+            'control_type': 'Джойстики'  # 'Джойстики', 'Кнопки', 'Гибрид'
         }
+        
+        # Флаги для кнопок управления
+        self.move_forward = False
+        self.move_backward = False
+        self.move_left = False
+        self.move_right = False
+        self.rotate_left = False
+        self.rotate_right = False
         
         # Загружаем сохраненные настройки
         self.load_settings()
         
-        # Создаем элементы управления
-        self.create_controls()
-        
         # Инициализируем карту и игрока
         self.reset_game()
+        
+        # Создаем отдельный виджет для 3D графики
+        self.graphics_widget = Widget()
+        self.add_widget(self.graphics_widget)
+        
+        # Создаем элементы управления (поверх графики)
+        self.create_controls()
         
         # Настройка клавиатуры для ПК
         self.keys_pressed = set()
         self.setup_keyboard()
+        
+        # Запускаем игровой цикл
+        Clock.schedule_interval(self.update, 1/self.settings['fps'])
     
     def load_settings(self):
         try:
             if os.path.exists('settings.json'):
-                with open('settings.json', 'r') as f:
+                with open('settings.json', 'r', encoding='utf-8') as f:
                     loaded_settings = json.load(f)
                     self.settings.update(loaded_settings)
         except:
@@ -588,10 +659,6 @@ class RaycasterGame(FloatLayout):
         # Сброс статистики
         self.game_time = 0
         self.score = 0
-        
-        # Запускаем игровой цикл
-        Clock.unschedule(self.update)
-        Clock.schedule_interval(self.update, 1/self.settings['fps'])
     
     def generate_random_map(self, size):
         # Генерация случайного лабиринта
@@ -610,11 +677,13 @@ class RaycasterGame(FloatLayout):
     
     def setup_keyboard(self):
         self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-        self._keyboard.bind(on_key_down=self._on_key_down, on_key_up=self._on_key_up)
+        if self._keyboard:
+            self._keyboard.bind(on_key_down=self._on_key_down, on_key_up=self._on_key_up)
     
     def _keyboard_closed(self):
-        self._keyboard.unbind()
-        self._keyboard = None
+        if hasattr(self, '_keyboard'):
+            self._keyboard.unbind()
+            self._keyboard = None
     
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         self.keys_pressed.add(keycode[1])
@@ -631,6 +700,28 @@ class RaycasterGame(FloatLayout):
         return True
     
     def create_controls(self):
+        # Удаляем старые элементы управления
+        if hasattr(self, 'move_joystick'):
+            self.remove_widget(self.move_joystick)
+        if hasattr(self, 'rotate_joystick'):
+            self.remove_widget(self.rotate_joystick)
+        if hasattr(self, 'button_container'):
+            self.remove_widget(self.button_container)
+        
+        control_type = self.settings.get('control_type', 'Джойстики')
+        
+        # Сначала создаем управление, затем добавляем яркие цвета
+        if control_type == 'Джойстики':
+            self.create_joystick_controls()
+        elif control_type == 'Кнопки':
+            self.create_button_controls()
+        else:  # Гибрид
+            self.create_hybrid_controls()
+        
+        # Общие элементы управления
+        self.create_common_controls()
+    
+    def create_joystick_controls(self):
         # Левый джойстик для движения
         self.move_joystick = VirtualJoystick()
         self.move_joystick.size_hint = (None, None)
@@ -644,16 +735,185 @@ class RaycasterGame(FloatLayout):
         self.rotate_joystick.size = (150, 150)
         self.rotate_joystick.pos = (Window.width - 200, 50)
         self.add_widget(self.rotate_joystick)
+    
+    def create_button_controls(self):
+        # Контейнер для кнопок управления
+        self.button_container = FloatLayout()
         
+        # Создаем кнопки для движения
+        button_size = 80
+        button_margin = 10
+        
+        # Движение вперед
+        self.btn_forward = Button(
+            text='↑',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width/2 - button_size/2, 150),
+            font_size=40,
+            background_color=(0.2, 0.8, 0.2, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_forward.bind(
+            on_press=lambda x: setattr(self, 'move_forward', True),
+            on_release=lambda x: setattr(self, 'move_forward', False)
+        )
+        self.button_container.add_widget(self.btn_forward)
+        
+        # Движение назад
+        self.btn_backward = Button(
+            text='↓',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width/2 - button_size/2, 50),
+            font_size=40,
+            background_color=(0.8, 0.2, 0.2, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_backward.bind(
+            on_press=lambda x: setattr(self, 'move_backward', True),
+            on_release=lambda x: setattr(self, 'move_backward', False)
+        )
+        self.button_container.add_widget(self.btn_backward)
+        
+        # Движение влево
+        self.btn_left = Button(
+            text='←',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width/2 - button_size - button_margin - 20, 100),
+            font_size=40,
+            background_color=(0.2, 0.5, 0.8, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_left.bind(
+            on_press=lambda x: setattr(self, 'move_left', True),
+            on_release=lambda x: setattr(self, 'move_left', False)
+        )
+        self.button_container.add_widget(self.btn_left)
+        
+        # Движение вправо
+        self.btn_right = Button(
+            text='→',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width/2 + button_margin + 20, 100),
+            font_size=40,
+            background_color=(0.2, 0.5, 0.8, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_right.bind(
+            on_press=lambda x: setattr(self, 'move_right', True),
+            on_release=lambda x: setattr(self, 'move_right', False)
+        )
+        self.button_container.add_widget(self.btn_right)
+        
+        # Поворот влево (располагаем в правом верхнем углу)
+        self.btn_rotate_left = Button(
+            text='↶',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width - button_size - 50, Window.height - button_size - 150),
+            font_size=40,
+            background_color=(0.8, 0.5, 0.2, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_rotate_left.bind(
+            on_press=lambda x: setattr(self, 'rotate_left', True),
+            on_release=lambda x: setattr(self, 'rotate_left', False)
+        )
+        self.button_container.add_widget(self.btn_rotate_left)
+        
+        # Поворот вправо
+        self.btn_rotate_right = Button(
+            text='↷',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width - 2*button_size - 70, Window.height - button_size - 150),
+            font_size=40,
+            background_color=(0.8, 0.5, 0.2, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_rotate_right.bind(
+            on_press=lambda x: setattr(self, 'rotate_right', True),
+            on_release=lambda x: setattr(self, 'rotate_right', False)
+        )
+        self.button_container.add_widget(self.btn_rotate_right)
+        
+        self.add_widget(self.button_container)
+    
+    def create_hybrid_controls(self):
+        # Комбинация джойстиков и кнопок
+        self.create_joystick_controls()
+        
+        # Добавляем кнопки поворота
+        self.button_container = FloatLayout()
+        
+        button_size = 70
+        button_color = (0.8, 0.5, 0.2, 0.9)
+        
+        # Поворот влево
+        self.btn_rotate_left = Button(
+            text='↶',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width - button_size - 50, 200),
+            font_size=35,
+            background_color=button_color,
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_rotate_left.bind(
+            on_press=lambda x: setattr(self, 'rotate_left', True),
+            on_release=lambda x: setattr(self, 'rotate_left', False)
+        )
+        self.button_container.add_widget(self.btn_rotate_left)
+        
+        # Поворот вправо
+        self.btn_rotate_right = Button(
+            text='↷',
+            size_hint=(None, None),
+            size=(button_size, button_size),
+            pos=(Window.width - 2*button_size - 70, 200),
+            font_size=35,
+            background_color=button_color,
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
+        )
+        self.btn_rotate_right.bind(
+            on_press=lambda x: setattr(self, 'rotate_right', True),
+            on_release=lambda x: setattr(self, 'rotate_right', False)
+        )
+        self.button_container.add_widget(self.btn_rotate_right)
+        
+        self.add_widget(self.button_container)
+    
+    def create_common_controls(self):
         # Кнопка паузы
         self.pause_button = Button(
             text='II',
             size_hint=(None, None),
-            size=(60, 60),
-            pos=(Window.width - 70, Window.height - 70),
-            font_size=30,
-            background_color=(0.3, 0.3, 0.3, 0.7),
-            background_normal=''
+            size=(80, 80),
+            pos=(Window.width - 90, Window.height - 90),
+            font_size=40,
+            background_color=(0.8, 0.8, 0.2, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
         )
         self.pause_button.bind(on_press=lambda x: self.toggle_pause())
         self.add_widget(self.pause_button)
@@ -662,11 +922,13 @@ class RaycasterGame(FloatLayout):
         self.reset_button = Button(
             text='↻',
             size_hint=(None, None),
-            size=(60, 60),
-            pos=(10, Window.height - 70),
-            font_size=30,
-            background_color=(0.3, 0.3, 0.3, 0.7),
-            background_normal=''
+            size=(80, 80),
+            pos=(10, Window.height - 90),
+            font_size=40,
+            background_color=(0.2, 0.8, 0.8, 0.9),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            border=(3, 3, 3, 3)
         )
         self.reset_button.bind(on_press=lambda x: self.reset_game())
         self.add_widget(self.reset_button)
@@ -675,12 +937,19 @@ class RaycasterGame(FloatLayout):
         self.stats_label = Label(
             text='Время: 0:00\nОчки: 0',
             size_hint=(None, None),
-            size=(200, 60),
-            pos=(Window.width/2 - 100, Window.height - 80),
-            color=(1, 1, 1, 0.8),
+            size=(250, 80),
+            pos=(Window.width/2 - 125, Window.height - 100),
+            color=(1, 1, 1, 1),
+            font_size=24,
             halign='center',
-            valign='middle'
+            valign='middle',
+            bold=True
         )
+        # Добавляем фон для статистики
+        with self.stats_label.canvas.before:
+            Color(0, 0, 0, 0.7)
+            Rectangle(pos=self.stats_label.pos, size=self.stats_label.size)
+        
         self.stats_label.bind(size=self.stats_label.setter('text_size'))
         self.add_widget(self.stats_label)
     
@@ -695,7 +964,7 @@ class RaycasterGame(FloatLayout):
     
     def show_pause_menu(self):
         if not self.pause_popup:
-            pause_content = PauseMenu(self)
+            pause_content = PauseMenu(self, None)
             self.pause_popup = Popup(
                 title='',
                 content=pause_content,
@@ -703,6 +972,7 @@ class RaycasterGame(FloatLayout):
                 auto_dismiss=False,
                 background=''
             )
+            pause_content.popup_instance = self.pause_popup
             self.pause_popup.open()
     
     def cast_ray(self, angle):
@@ -737,8 +1007,23 @@ class RaycasterGame(FloatLayout):
         seconds = int(self.game_time % 60)
         self.stats_label.text = f'Время: {minutes}:{seconds:02d}\nОчки: {self.score}'
         
+        # Обновляем позиции элементов управления при изменении размера окна
+        if hasattr(self, 'pause_button'):
+            self.pause_button.pos = (self.width - 90, self.height - 90)
+        if hasattr(self, 'reset_button'):
+            self.reset_button.pos = (10, self.height - 90)
+        if hasattr(self, 'stats_label'):
+            self.stats_label.pos = (self.width/2 - 125, self.height - 100)
+            # Обновляем фон
+            with self.stats_label.canvas.before:
+                self.stats_label.canvas.before.clear()
+                Color(0, 0, 0, 0.7)
+                Rectangle(pos=self.stats_label.pos, size=self.stats_label.size)
+        
+        control_type = self.settings.get('control_type', 'Джойстики')
+        
         # Управление с клавиатуры (для ПК)
-        if self._keyboard:
+        if hasattr(self, '_keyboard') and self._keyboard:
             speed = self.move_speed * dt
             rot_speed = self.rot_speed * dt
             
@@ -753,13 +1038,13 @@ class RaycasterGame(FloatLayout):
             if 'd' in self.keys_pressed:
                 self.player_angle += rot_speed
         
-        # Управление с джойстиков
-        if hasattr(self, 'move_joystick') and hasattr(self, 'rotate_joystick'):
+        # Управление с джойстиков (если выбран этот тип)
+        if control_type in ['Джойстики', 'Гибрид'] and hasattr(self, 'move_joystick'):
             move_x, move_y = self.move_joystick.stick_pos
-            rotate_x, rotate_y = self.rotate_joystick.stick_pos
+            rotate_x, rotate_y = self.rotate_joystick.stick_pos if hasattr(self, 'rotate_joystick') else (0, 0)
             
             # Инвертирование оси Y если нужно
-            if self.settings['invert_y']:
+            if self.settings.get('invert_y', False):
                 move_y = -move_y
             
             # Движение
@@ -774,16 +1059,43 @@ class RaycasterGame(FloatLayout):
             self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * move_sideways
             self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * move_sideways
             
-            # Вращение
+            # Вращение от джойстика
             rotation = rotate_x * self.rot_speed * dt
             self.player_angle += rotation
+        
+        # Управление с кнопок (если выбран этот тип или гибрид)
+        if control_type in ['Кнопки', 'Гибрид']:
+            speed = self.move_speed * dt
+            rot_speed = self.rot_speed * dt
+            
+            # Движение вперед/назад
+            if self.move_forward:
+                self.player_pos[0] += math.cos(self.player_angle) * speed
+                self.player_pos[1] += math.sin(self.player_angle) * speed
+            if self.move_backward:
+                self.player_pos[0] -= math.cos(self.player_angle) * speed
+                self.player_pos[1] -= math.sin(self.player_angle) * speed
+            
+            # Боковое движение
+            if self.move_left:
+                self.player_pos[0] += math.cos(self.player_angle - math.pi/2) * speed
+                self.player_pos[1] += math.sin(self.player_angle - math.pi/2) * speed
+            if self.move_right:
+                self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * speed
+                self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * speed
+            
+            # Поворот с кнопок
+            if self.rotate_left:
+                self.player_angle -= rot_speed
+            if self.rotate_right:
+                self.player_angle += rot_speed
         
         # Проверка столкновений
         self.check_collisions()
         
-        # Отрисовка
-        self.canvas.clear()
-        with self.canvas:
+        # Отрисовка только в graphics_widget
+        self.graphics_widget.canvas.clear()
+        with self.graphics_widget.canvas:
             # Небо и пол
             Color(0.2, 0.2, 0.8)
             Rectangle(pos=(0, self.height/2), size=(self.width, self.height/2))
@@ -838,41 +1150,48 @@ class RaycasterGame(FloatLayout):
     
     def draw_minimap(self):
         minimap_size = 150
-        cell_size = minimap_size / len(self.map)
+        if len(self.map) > 0:
+            cell_size = minimap_size / len(self.map)
+        else:
+            return
         
+        # Фон мини-карты
         Color(0, 0, 0, 0.7)
         Rectangle(
-            pos=(self.width - minimap_size - 10, 10),
+            pos=(self.width - minimap_size - 20, 20),
             size=(minimap_size, minimap_size)
         )
         
+        # Стены на мини-карте
         for y in range(len(self.map)):
             for x in range(len(self.map[0])):
                 if self.map[y][x] == 1:
-                    Color(1, 1, 1, 0.8)
+                    Color(1, 1, 1, 0.9)
                     Rectangle(
-                        pos=(self.width - minimap_size - 10 + x * cell_size,
-                             10 + y * cell_size),
+                        pos=(self.width - minimap_size - 20 + x * cell_size,
+                             20 + y * cell_size),
                         size=(cell_size - 1, cell_size - 1)
                     )
         
+        # Игрок на мини-карте
         player_x = self.player_pos[0] * cell_size
         player_y = self.player_pos[1] * cell_size
         
-        Color(0, 1, 0, 0.8)
+        Color(0, 1, 0, 1)
         Rectangle(
-            pos=(self.width - minimap_size - 10 + player_x - 3,
-                 10 + player_y - 3),
+            pos=(self.width - minimap_size - 20 + player_x - 3,
+                 20 + player_y - 3),
             size=(6, 6)
         )
         
-        Color(1, 0, 0, 0.8)
+        # Направление игрока
+        Color(1, 0, 0, 1)
         Line(
             points=[
-                self.width - minimap_size - 10 + player_x,
-                10 + player_y,
-                self.width - minimap_size - 10 + player_x + math.cos(self.player_angle) * 10,
-                10 + player_y + math.sin(self.player_angle) * 10
+                self.width - minimap_size - 20 + player_x,
+                20 + player_y,
+                self.width - minimap_size - 20 + player_x + math.cos(self.player_angle) * 15,
+                20 + player_y + math.sin(self.player_angle) * 15
             ],
             width=2
         )
@@ -884,8 +1203,17 @@ class RaycasterApp(App):
         self.sm = ScreenManager(transition=SlideTransition())
     
     def build(self):
-        Window.fullscreen = 'auto'
-        Window.size = (800, 600)
+        # Устанавливаем размер окна
+        Window.size = (1024, 768)
+        
+        # Для мобильных устройств делаем полноэкранный режим
+        try:
+            from kivy.utils import platform
+            if platform in ('android', 'ios'):
+                Window.fullscreen = 'auto'
+                Config.set('graphics', 'fullscreen', 'auto')
+        except:
+            pass
         
         # Создаем экраны
         self.sm.add_widget(MenuScreen())
@@ -906,9 +1234,16 @@ class RaycasterApp(App):
             self.game_screen.game_widget.move_speed = 2.5 * settings['sensitivity']
             self.game_screen.game_widget.rot_speed = 2.5 * settings['sensitivity']
             
+            # Обновляем элементы управления
+            self.game_screen.game_widget.create_controls()
+            
             # Обновляем игровой цикл с новым FPS
             Clock.unschedule(self.game_screen.game_widget.update)
             Clock.schedule_interval(self.game_screen.game_widget.update, 1/settings['fps'])
 
 if __name__ == '__main__':
+    # Отключаем лишние логи
+    import os
+    os.environ['KIVY_NO_CONSOLELOG'] = '1'
+    
     RaycasterApp().run()
