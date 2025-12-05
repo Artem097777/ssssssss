@@ -17,9 +17,6 @@ if platform.system() == 'Windows':
 # Для Android/сенсорных устройств
 Config.set('input', 'mouse', 'mouse,disable_multitouch')
 
-# Прячем системный курсор в полноэкранном режиме
-Config.set('graphics', 'show_cursor', 0)
-
 from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
@@ -32,14 +29,16 @@ from kivy.uix.checkbox import CheckBox
 from kivy.graphics import *
 from kivy.clock import Clock
 from kivy.core.window import Window
-from kivy.properties import NumericProperty, BooleanProperty, StringProperty
+from kivy.properties import NumericProperty, BooleanProperty, StringProperty, DictProperty, ListProperty
 from kivy.uix.popup import Popup
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.image import Image
 from kivy.logger import Logger
 import math
 import json
 import os
 import random
+import time
 
 # Настраиваем логгер для фильтрации предупреждений
 import logging
@@ -148,7 +147,7 @@ class MenuScreen(Screen):
         
         # Версия игры
         version = Label(
-            text='Версия 1.0',
+            text='Версия 1.1 (с NPC)',
             font_size=20,
             color=(0.7, 0.7, 0.7, 1)
         )
@@ -218,6 +217,29 @@ class SettingsScreen(Screen):
         fps_layout.add_widget(self.fps_slider)
         fps_layout.add_widget(self.fps_value)
         
+        # Настройки NPC
+        npc_label = Label(text='NPC:', font_size=30, color=(1, 1, 1, 1))
+        
+        # Количество NPC
+        npc_count_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.1))
+        npc_count_label = Label(text='Количество NPC:', font_size=25)
+        self.npc_count_slider = Slider(min=1, max=10, value=3, step=1)
+        self.npc_count_value = Label(text='3', font_size=25)
+        self.npc_count_slider.bind(value=self.update_npc_count_label)
+        npc_count_layout.add_widget(npc_count_label)
+        npc_count_layout.add_widget(self.npc_count_slider)
+        npc_count_layout.add_widget(self.npc_count_value)
+        
+        # Сложность NPC
+        npc_diff_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.1))
+        npc_diff_label = Label(text='Сложность NPC:', font_size=25)
+        self.npc_diff_slider = Slider(min=1, max=3, value=2, step=1)
+        self.npc_diff_value = Label(text='Средняя', font_size=25)
+        self.npc_diff_slider.bind(value=self.update_npc_diff_label)
+        npc_diff_layout.add_widget(npc_diff_label)
+        npc_diff_layout.add_widget(self.npc_diff_slider)
+        npc_diff_layout.add_widget(self.npc_diff_value)
+        
         # Настройки управления
         control_label = Label(text='Управление:', font_size=30, color=(1, 1, 1, 1))
         
@@ -238,18 +260,15 @@ class SettingsScreen(Screen):
         invert_layout.add_widget(invert_label)
         invert_layout.add_widget(self.invert_check)
         
-        # Тип управления (новая опция)
+        # Тип управления
         control_type_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.1))
-        control_label2 = Label(text='Тип управления:', font_size=25)
-        self.control_type_btn = Button(
-            text='Джойстики',
-            font_size=20,
-            size_hint=(0.5, 1),
-            background_color=(0.3, 0.3, 0.5, 1)
-        )
-        self.control_type_btn.bind(on_press=self.toggle_control_type)
-        control_type_layout.add_widget(control_label2)
-        control_type_layout.add_widget(self.control_type_btn)
+        control_type_label = Label(text='Тип управления:', font_size=25)
+        self.control_type_slider = Slider(min=0, max=2, value=0, step=1)
+        self.control_type_value = Label(text='Джойстики', font_size=25)
+        self.control_type_slider.bind(value=self.update_control_type_label)
+        control_type_layout.add_widget(control_type_label)
+        control_type_layout.add_widget(self.control_type_slider)
+        control_type_layout.add_widget(self.control_type_value)
         
         # Кнопки
         buttons_layout = BoxLayout(orientation='horizontal', spacing=20, size_hint=(1, 0.2))
@@ -286,6 +305,9 @@ class SettingsScreen(Screen):
         content.add_widget(graphics_label)
         content.add_widget(rays_layout)
         content.add_widget(fps_layout)
+        content.add_widget(npc_label)
+        content.add_widget(npc_count_layout)
+        content.add_widget(npc_diff_layout)
         content.add_widget(control_label)
         content.add_widget(sens_layout)
         content.add_widget(invert_layout)
@@ -300,23 +322,30 @@ class SettingsScreen(Screen):
         # Загружаем сохраненные настройки
         self.load_settings()
     
-    def toggle_control_type(self, instance):
-        current = self.control_type_btn.text
-        if current == 'Джойстики':
-            self.control_type_btn.text = 'Кнопки'
-        elif current == 'Кнопки':
-            self.control_type_btn.text = 'Гибрид'
-        else:
-            self.control_type_btn.text = 'Джойстики'
-    
     def update_rays_label(self, instance, value):
         self.rays_value.text = str(int(value))
     
     def update_fps_label(self, instance, value):
         self.fps_value.text = str(int(value))
     
+    def update_npc_count_label(self, instance, value):
+        self.npc_count_value.text = str(int(value))
+    
+    def update_npc_diff_label(self, instance, value):
+        diff = int(value)
+        if diff == 1:
+            self.npc_diff_value.text = 'Легкая'
+        elif diff == 2:
+            self.npc_diff_value.text = 'Средняя'
+        else:
+            self.npc_diff_value.text = 'Сложная'
+    
     def update_sens_label(self, instance, value):
         self.sens_value.text = f'{value:.1f}'
+    
+    def update_control_type_label(self, instance, value):
+        types = ['Джойстики', 'Клавиатура', 'Оба']
+        self.control_type_value.text = types[int(value)]
     
     def load_settings(self):
         try:
@@ -325,10 +354,11 @@ class SettingsScreen(Screen):
                     settings = json.load(f)
                     self.rays_slider.value = settings.get('rays', 120)
                     self.fps_slider.value = settings.get('fps', 60)
+                    self.npc_count_slider.value = settings.get('npc_count', 3)
+                    self.npc_diff_slider.value = settings.get('npc_difficulty', 2)
                     self.sens_slider.value = settings.get('sensitivity', 1.5)
                     self.invert_check.active = settings.get('invert_y', False)
-                    control_type = settings.get('control_type', 'Джойстики')
-                    self.control_type_btn.text = control_type
+                    self.control_type_slider.value = settings.get('control_type', 0)
         except:
             pass
     
@@ -336,9 +366,11 @@ class SettingsScreen(Screen):
         settings = {
             'rays': int(self.rays_slider.value),
             'fps': int(self.fps_slider.value),
+            'npc_count': int(self.npc_count_slider.value),
+            'npc_difficulty': int(self.npc_diff_slider.value),
             'sensitivity': self.sens_slider.value,
             'invert_y': self.invert_check.active,
-            'control_type': self.control_type_btn.text
+            'control_type': int(self.control_type_slider.value)
         }
         
         try:
@@ -360,9 +392,11 @@ class SettingsScreen(Screen):
     def default_settings(self, instance):
         self.rays_slider.value = 120
         self.fps_slider.value = 60
+        self.npc_count_slider.value = 3
+        self.npc_diff_slider.value = 2
         self.sens_slider.value = 1.5
         self.invert_check.active = False
-        self.control_type_btn.text = 'Джойстики'
+        self.control_type_slider.value = 0
     
     def go_back(self, instance):
         app = App.get_running_app()
@@ -389,7 +423,8 @@ class MapsScreen(Screen):
             ('Средний лабиринт', 'medium'),
             ('Большой лабиринт', 'large'),
             ('Рандомная карта', 'random'),
-            ('Прямые коридоры', 'corridors')
+            ('Прямые коридоры', 'corridors'),
+            ('Арена с NPC', 'arena')
         ]
         
         for map_name, map_id in maps:
@@ -441,6 +476,108 @@ class MapsScreen(Screen):
     def go_back(self, instance):
         app = App.get_running_app()
         app.sm.current = 'menu'
+
+class NPC:
+    def __init__(self, x, y, difficulty=2):
+        self.x = x
+        self.y = y
+        self.difficulty = difficulty  # 1 - легкий, 2 - средний, 3 - сложный
+        self.angle = random.uniform(0, 2 * math.pi)
+        self.speed = 0.8 + (difficulty * 0.3)  # От 1.1 до 1.9
+        self.health = 3
+        self.detection_range = 5 + difficulty * 2  # От 7 до 11
+        self.color = (
+            1.0,  # R
+            0.2 + (3 - difficulty) * 0.2,  # G (легкие зеленее)
+            0.2 + (difficulty - 1) * 0.2   # B (сложные краснее)
+        )
+        self.last_move_time = time.time()
+        self.move_change_interval = 2.0 / difficulty  # Чаще меняют направление на сложном уровне
+        self.state = "patrol"  # patrol, chase, attack
+        self.attack_range = 1.5
+        self.attack_damage = 1
+        self.attack_cooldown = 0
+        self.size = 0.4
+        
+    def update(self, player_x, player_y, dt, map_data):
+        # Обновляем кулдаун атаки
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= dt
+        
+        # Проверяем расстояние до игрока
+        dx = player_x - self.x
+        dy = player_y - self.y
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        # Определяем состояние
+        if distance < self.attack_range:
+            self.state = "attack"
+        elif distance < self.detection_range:
+            self.state = "chase"
+        else:
+            self.state = "patrol"
+        
+        # Действия в зависимости от состояния
+        if self.state == "attack":
+            # Атакуем игрока
+            if self.attack_cooldown <= 0:
+                self.attack_cooldown = 1.0  # 1 секунда между атаками
+                return "damage"  # Сигнал о нанесении урона
+            # Стоим на месте при атаке
+            return None
+            
+        elif self.state == "chase":
+            # Преследуем игрока
+            if distance > 0:
+                self.angle = math.atan2(dy, dx)
+                move_x = math.cos(self.angle) * self.speed * dt
+                move_y = math.sin(self.angle) * self.speed * dt
+                
+                # Проверяем столкновения со стенами
+                new_x = self.x + move_x
+                new_y = self.y + move_y
+                
+                if self.can_move_to(new_x, new_y, map_data):
+                    self.x = new_x
+                    self.y = new_y
+                    
+        else:  # patrol
+            # Патрулируем случайным образом
+            current_time = time.time()
+            if current_time - self.last_move_time > self.move_change_interval:
+                self.angle = random.uniform(0, 2 * math.pi)
+                self.last_move_time = current_time
+            
+            move_x = math.cos(self.angle) * self.speed * 0.5 * dt  # Медленнее при патрулировании
+            move_y = math.sin(self.angle) * self.speed * 0.5 * dt
+            
+            # Проверяем столкновения со стенами
+            new_x = self.x + move_x
+            new_y = self.y + move_y
+            
+            if self.can_move_to(new_x, new_y, map_data):
+                self.x = new_x
+                self.y = new_y
+            else:
+                # Если уперлись в стену, меняем направление
+                self.angle = random.uniform(0, 2 * math.pi)
+        
+        return None
+    
+    def can_move_to(self, x, y, map_data):
+        # Проверяем, можно ли переместиться в данную позицию
+        map_x = int(x)
+        map_y = int(y)
+        
+        if (0 <= map_y < len(map_data) and 
+            0 <= map_x < len(map_data[0]) and 
+            map_data[map_y][map_x] == 0):
+            return True
+        return False
+    
+    def take_damage(self, damage=1):
+        self.health -= damage
+        return self.health <= 0
 
 class GameScreen(Screen):
     def __init__(self, **kwargs):
@@ -536,25 +673,34 @@ class RaycasterGame(FloatLayout):
         
         self.is_paused = False
         self.pause_popup = None
-        self.game_time = 0
+        self.player_health = 100
         self.score = 0
+        self.npcs = []
+        self.game_over = False
+        
+        # Состояние клавиш клавиатуры
+        self.keyboard_state = {
+            'w': False,  # Вперед
+            's': False,  # Назад
+            'a': False,  # Влево
+            'd': False,  # Вправо
+            'left': False,  # Поворот влево
+            'right': False,  # Поворот вправо
+            'up': False,  # Вперед (альтернатива)
+            'down': False,  # Назад (альтернатива)
+            'space': False,  # Атака
+        }
         
         # Настройки по умолчанию
         self.settings = {
             'rays': 120,
             'fps': 60,
+            'npc_count': 3,
+            'npc_difficulty': 2,
             'sensitivity': 1.5,
             'invert_y': False,
-            'control_type': 'Джойстики'  # 'Джойстики', 'Кнопки', 'Гибрид'
+            'control_type': 0  # 0 - джойстики, 1 - клавиатура, 2 - оба
         }
-        
-        # Флаги для кнопок управления
-        self.move_forward = False
-        self.move_backward = False
-        self.move_left = False
-        self.move_right = False
-        self.rotate_left = False
-        self.rotate_right = False
         
         # Загружаем сохраненные настройки
         self.load_settings()
@@ -569,12 +715,17 @@ class RaycasterGame(FloatLayout):
         # Создаем элементы управления (поверх графики)
         self.create_controls()
         
-        # Настройка клавиатуры для ПК
-        self.keys_pressed = set()
-        self.setup_keyboard()
-        
         # Запускаем игровой цикл
         Clock.schedule_interval(self.update, 1/self.settings['fps'])
+        
+        # Привязываем обработчики клавиатуры
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)
+        self._keyboard.bind(on_key_up=self._on_keyboard_up)
+        
+        # Таймер для мигания при получении урона
+        self.damage_flash = 0
+        self.last_shot_time = 0
     
     def load_settings(self):
         try:
@@ -586,6 +737,12 @@ class RaycasterGame(FloatLayout):
             pass
     
     def reset_game(self):
+        # Сбрасываем состояние игры
+        self.player_health = 100
+        self.score = 0
+        self.npcs = []
+        self.game_over = False
+        
         # Выбираем карту в зависимости от выбора
         app = App.get_running_app()
         map_id = getattr(app, 'selected_map', 'small')
@@ -602,20 +759,32 @@ class RaycasterGame(FloatLayout):
                 [1,1,1,1,1,1,1,1]
             ]
             self.player_pos = [1.5, 1.5]
+            
         elif map_id == 'medium':
             self.map = [
-                [1,1,1,1,1,1,1,1,1,1],
-                [1,0,0,0,0,0,0,0,0,1],
-                [1,0,1,1,0,1,1,1,0,1],
-                [1,0,1,0,0,0,0,1,0,1],
-                [1,0,1,0,1,1,0,1,0,1],
-                [1,0,0,0,1,0,0,0,0,1],
-                [1,0,1,0,1,0,1,1,0,1],
-                [1,0,1,0,0,0,1,0,0,1],
-                [1,0,0,0,1,0,0,0,0,1],
-                [1,1,1,1,1,1,1,1,1,1]
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,0,1],
+                [1,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1],
+                [1,0,1,0,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1],
+                [1,0,1,0,1,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1],
+                [1,0,1,0,1,0,1,1,0,1,0,1,0,1,0,1,0,1,0,1],
+                [1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+                [1,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1],
+                [1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1],
+                [1,0,1,0,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1],
+                [1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+                [1,0,1,0,1,0,1,1,0,1,0,1,0,1,1,1,0,1,0,1],
+                [1,0,1,0,0,0,1,0,0,1,0,0,0,1,0,0,0,1,0,1],
+                [1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1,1,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,1,0,1,0,1,1,0,1,1,1,0,1,1,0,1,1,0,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
             ]
-            self.player_pos = [1.5, 1.5]
+            self.player_pos = [3.0, 3.0]  # Центр стартовой позиции
+            
         elif map_id == 'large':
             self.map = [
                 [1,1,1,1,1,1,1,1,1,1,1,1],
@@ -632,10 +801,12 @@ class RaycasterGame(FloatLayout):
                 [1,1,1,1,1,1,1,1,1,1,1,1]
             ]
             self.player_pos = [1.5, 1.5]
+            
         elif map_id == 'random':
             self.generate_random_map(10)
             self.player_pos = [1.5, 1.5]
-        else:  # corridors
+            
+        elif map_id == 'corridors':
             self.map = [
                 [1,1,1,1,1,1,1,1,1,1],
                 [1,0,0,0,0,0,0,0,0,1],
@@ -649,6 +820,19 @@ class RaycasterGame(FloatLayout):
                 [1,1,1,1,1,1,1,1,1,1]
             ]
             self.player_pos = [1.5, 1.5]
+            
+        else:  # arena
+            self.map = [
+                [1,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,1],
+                [1,1,1,1,1,1,1,1]
+            ]
+            self.player_pos = [4.0, 4.0]
         
         self.player_angle = 0
         self.fov = math.pi / 3
@@ -656,9 +840,8 @@ class RaycasterGame(FloatLayout):
         self.move_speed = 2.5 * self.settings['sensitivity']
         self.rot_speed = 2.5 * self.settings['sensitivity']
         
-        # Сброс статистики
-        self.game_time = 0
-        self.score = 0
+        # Создаем NPC
+        self.create_npcs()
     
     def generate_random_map(self, size):
         # Генерация случайного лабиринта
@@ -675,29 +858,26 @@ class RaycasterGame(FloatLayout):
         self.map[1][2] = 0
         self.map[2][1] = 0
     
-    def setup_keyboard(self):
-        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-        if self._keyboard:
-            self._keyboard.bind(on_key_down=self._on_key_down, on_key_up=self._on_key_up)
-    
-    def _keyboard_closed(self):
-        if hasattr(self, '_keyboard'):
-            self._keyboard.unbind()
-            self._keyboard = None
-    
-    def _on_key_down(self, keyboard, keycode, text, modifiers):
-        self.keys_pressed.add(keycode[1])
+    def create_npcs(self):
+        self.npcs = []
+        npc_count = self.settings.get('npc_count', 3)
+        difficulty = self.settings.get('npc_difficulty', 2)
         
-        # Escape для паузы
-        if keycode[1] == 'escape':
-            self.toggle_pause()
-        
-        return True
-    
-    def _on_key_up(self, keyboard, keycode):
-        if keycode[1] in self.keys_pressed:
-            self.keys_pressed.remove(keycode[1])
-        return True
+        for _ in range(npc_count):
+            # Находим случайную свободную позицию для NPC
+            placed = False
+            attempts = 0
+            while not placed and attempts < 100:
+                x = random.randint(1, len(self.map[0]) - 2)
+                y = random.randint(1, len(self.map) - 2)
+                
+                # Проверяем, что клетка свободна и не слишком близко к игроку
+                if (self.map[y][x] == 0 and 
+                    abs(x - self.player_pos[0]) > 3 and 
+                    abs(y - self.player_pos[1]) > 3):
+                    self.npcs.append(NPC(x + 0.5, y + 0.5, difficulty))
+                    placed = True
+                attempts += 1
     
     def create_controls(self):
         # Удаляем старые элементы управления
@@ -705,202 +885,37 @@ class RaycasterGame(FloatLayout):
             self.remove_widget(self.move_joystick)
         if hasattr(self, 'rotate_joystick'):
             self.remove_widget(self.rotate_joystick)
-        if hasattr(self, 'button_container'):
-            self.remove_widget(self.button_container)
         
-        control_type = self.settings.get('control_type', 'Джойстики')
-        
-        # Сначала создаем управление, затем добавляем яркие цвета
-        if control_type == 'Джойстики':
+        # Создаем только джойстики если они нужны
+        control_type = self.settings.get('control_type', 0)
+        if control_type == 0 or control_type == 2:  # Джойстики или оба
             self.create_joystick_controls()
-        elif control_type == 'Кнопки':
-            self.create_button_controls()
-        else:  # Гибрид
-            self.create_hybrid_controls()
         
         # Общие элементы управления
         self.create_common_controls()
     
     def create_joystick_controls(self):
-        # Левый джойстик для движения
+        # Левый джойстик для движения (больше и ярче)
         self.move_joystick = VirtualJoystick()
         self.move_joystick.size_hint = (None, None)
-        self.move_joystick.size = (200, 200)
+        self.move_joystick.size = (250, 250)  # Увеличенный размер
         self.move_joystick.pos = (50, 50)
+        # Добавляем яркий цвет для видимости
+        with self.move_joystick.canvas:
+            Color(0.2, 0.8, 0.2, 0.3)  # Яркий зеленый
+            Ellipse(pos=self.move_joystick.pos, size=self.move_joystick.size)
         self.add_widget(self.move_joystick)
         
-        # Правый джойстик для поворота
+        # Правый джойстик для поворота (больше и ярче)
         self.rotate_joystick = VirtualJoystick()
         self.rotate_joystick.size_hint = (None, None)
-        self.rotate_joystick.size = (150, 150)
-        self.rotate_joystick.pos = (Window.width - 200, 50)
+        self.rotate_joystick.size = (200, 200)  # Увеличенный размер
+        self.rotate_joystick.pos = (Window.width - 250, 50)
+        # Добавляем яркий цвет для видимости
+        with self.rotate_joystick.canvas:
+            Color(0.8, 0.5, 0.2, 0.3)  # Яркий оранжевый
+            Ellipse(pos=self.rotate_joystick.pos, size=self.rotate_joystick.size)
         self.add_widget(self.rotate_joystick)
-    
-    def create_button_controls(self):
-        # Контейнер для кнопок управления
-        self.button_container = FloatLayout()
-        
-        # Создаем кнопки для движения
-        button_size = 80
-        button_margin = 10
-        
-        # Движение вперед
-        self.btn_forward = Button(
-            text='↑',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width/2 - button_size/2, 150),
-            font_size=40,
-            background_color=(0.2, 0.8, 0.2, 0.9),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_forward.bind(
-            on_press=lambda x: setattr(self, 'move_forward', True),
-            on_release=lambda x: setattr(self, 'move_forward', False)
-        )
-        self.button_container.add_widget(self.btn_forward)
-        
-        # Движение назад
-        self.btn_backward = Button(
-            text='↓',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width/2 - button_size/2, 50),
-            font_size=40,
-            background_color=(0.8, 0.2, 0.2, 0.9),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_backward.bind(
-            on_press=lambda x: setattr(self, 'move_backward', True),
-            on_release=lambda x: setattr(self, 'move_backward', False)
-        )
-        self.button_container.add_widget(self.btn_backward)
-        
-        # Движение влево
-        self.btn_left = Button(
-            text='←',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width/2 - button_size - button_margin - 20, 100),
-            font_size=40,
-            background_color=(0.2, 0.5, 0.8, 0.9),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_left.bind(
-            on_press=lambda x: setattr(self, 'move_left', True),
-            on_release=lambda x: setattr(self, 'move_left', False)
-        )
-        self.button_container.add_widget(self.btn_left)
-        
-        # Движение вправо
-        self.btn_right = Button(
-            text='→',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width/2 + button_margin + 20, 100),
-            font_size=40,
-            background_color=(0.2, 0.5, 0.8, 0.9),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_right.bind(
-            on_press=lambda x: setattr(self, 'move_right', True),
-            on_release=lambda x: setattr(self, 'move_right', False)
-        )
-        self.button_container.add_widget(self.btn_right)
-        
-        # Поворот влево (располагаем в правом верхнем углу)
-        self.btn_rotate_left = Button(
-            text='↶',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width - button_size - 50, Window.height - button_size - 150),
-            font_size=40,
-            background_color=(0.8, 0.5, 0.2, 0.9),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_rotate_left.bind(
-            on_press=lambda x: setattr(self, 'rotate_left', True),
-            on_release=lambda x: setattr(self, 'rotate_left', False)
-        )
-        self.button_container.add_widget(self.btn_rotate_left)
-        
-        # Поворот вправо
-        self.btn_rotate_right = Button(
-            text='↷',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width - 2*button_size - 70, Window.height - button_size - 150),
-            font_size=40,
-            background_color=(0.8, 0.5, 0.2, 0.9),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_rotate_right.bind(
-            on_press=lambda x: setattr(self, 'rotate_right', True),
-            on_release=lambda x: setattr(self, 'rotate_right', False)
-        )
-        self.button_container.add_widget(self.btn_rotate_right)
-        
-        self.add_widget(self.button_container)
-    
-    def create_hybrid_controls(self):
-        # Комбинация джойстиков и кнопок
-        self.create_joystick_controls()
-        
-        # Добавляем кнопки поворота
-        self.button_container = FloatLayout()
-        
-        button_size = 70
-        button_color = (0.8, 0.5, 0.2, 0.9)
-        
-        # Поворот влево
-        self.btn_rotate_left = Button(
-            text='↶',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width - button_size - 50, 200),
-            font_size=35,
-            background_color=button_color,
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_rotate_left.bind(
-            on_press=lambda x: setattr(self, 'rotate_left', True),
-            on_release=lambda x: setattr(self, 'rotate_left', False)
-        )
-        self.button_container.add_widget(self.btn_rotate_left)
-        
-        # Поворот вправо
-        self.btn_rotate_right = Button(
-            text='↷',
-            size_hint=(None, None),
-            size=(button_size, button_size),
-            pos=(Window.width - 2*button_size - 70, 200),
-            font_size=35,
-            background_color=button_color,
-            color=(1, 1, 1, 1),
-            background_normal='',
-            border=(3, 3, 3, 3)
-        )
-        self.btn_rotate_right.bind(
-            on_press=lambda x: setattr(self, 'rotate_right', True),
-            on_release=lambda x: setattr(self, 'rotate_right', False)
-        )
-        self.button_container.add_widget(self.btn_rotate_right)
-        
-        self.add_widget(self.button_container)
     
     def create_common_controls(self):
         # Кнопка паузы
@@ -933,25 +948,20 @@ class RaycasterGame(FloatLayout):
         self.reset_button.bind(on_press=lambda x: self.reset_game())
         self.add_widget(self.reset_button)
         
-        # Панель статистики
-        self.stats_label = Label(
-            text='Время: 0:00\nОчки: 0',
+        # Кнопка атаки
+        self.attack_button = Button(
+            text='⚔',
             size_hint=(None, None),
-            size=(250, 80),
-            pos=(Window.width/2 - 125, Window.height - 100),
+            size=(100, 100),
+            pos=(Window.width - 110, 100),
+            font_size=50,
+            background_color=(0.8, 0.2, 0.2, 0.9),
             color=(1, 1, 1, 1),
-            font_size=24,
-            halign='center',
-            valign='middle',
-            bold=True
+            background_normal='',
+            border=(3, 3, 3, 3)
         )
-        # Добавляем фон для статистики
-        with self.stats_label.canvas.before:
-            Color(0, 0, 0, 0.7)
-            Rectangle(pos=self.stats_label.pos, size=self.stats_label.size)
-        
-        self.stats_label.bind(size=self.stats_label.setter('text_size'))
-        self.add_widget(self.stats_label)
+        self.attack_button.bind(on_press=lambda x: self.player_attack())
+        self.add_widget(self.attack_button)
     
     def toggle_pause(self):
         self.is_paused = not self.is_paused
@@ -975,13 +985,12 @@ class RaycasterGame(FloatLayout):
             pause_content.popup_instance = self.pause_popup
             self.pause_popup.open()
     
-    def cast_ray(self, angle):
+    def cast_ray(self, angle, max_depth=20):
         x, y = self.player_pos
         dir_x = math.cos(angle)
         dir_y = math.sin(angle)
         
         distance = 0
-        max_depth = 20
         hit = False
         
         while not hit and distance < max_depth:
@@ -997,105 +1006,244 @@ class RaycasterGame(FloatLayout):
         
         return distance
     
-    def update(self, dt):
-        if self.is_paused:
+    def _keyboard_closed(self):
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+        self._keyboard.unbind(on_key_up=self._on_keyboard_up)
+        self._keyboard = None
+    
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        # Обработка нажатия клавиш
+        key = keycode[1]  # Получаем символ клавиши
+        
+        if key in self.keyboard_state:
+            self.keyboard_state[key] = True
+        
+        # ESC для паузы
+        if key == 'escape':
+            self.toggle_pause()
+        
+        # Enter для перезапуска
+        if key == 'enter' or key == 'return':
+            self.reset_game()
+        
+        # Пробел для атаки
+        if key == 'spacebar':
+            self.player_attack()
+        
+        return True
+    
+    def _on_keyboard_up(self, keyboard, keycode):
+        # Обработка отпускания клавиш
+        key = keycode[1]
+        
+        if key in self.keyboard_state:
+            self.keyboard_state[key] = False
+        
+        return True
+    
+    def update_keyboard_controls(self, dt):
+        # Движение вперед/назад
+        move_forward = 0
+        if self.keyboard_state['w'] or self.keyboard_state['up']:
+            move_forward += 1
+        if self.keyboard_state['s'] or self.keyboard_state['down']:
+            move_forward -= 1
+        
+        # Боковое движение
+        move_sideways = 0
+        if self.keyboard_state['a']:
+            move_sideways -= 1
+        if self.keyboard_state['d']:
+            move_sideways += 1
+        
+        # Поворот
+        rotation = 0
+        if self.keyboard_state['left']:
+            rotation -= 1
+        if self.keyboard_state['right']:
+            rotation += 1
+        
+        # Применяем движение
+        if move_forward != 0:
+            self.player_pos[0] += math.cos(self.player_angle) * move_forward * self.move_speed * dt
+            self.player_pos[1] += math.sin(self.player_angle) * move_forward * self.move_speed * dt
+        
+        if move_sideways != 0:
+            self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * move_sideways * self.move_speed * dt
+            self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * move_sideways * self.move_speed * dt
+        
+        if rotation != 0:
+            self.player_angle += rotation * self.rot_speed * dt
+    
+    def player_attack(self):
+        current_time = time.time()
+        if current_time - self.last_shot_time < 0.5:  # Ограничение 2 выстрела в секунду
             return
         
-        # Обновляем статистику
-        self.game_time += dt
-        minutes = int(self.game_time // 60)
-        seconds = int(self.game_time % 60)
-        self.stats_label.text = f'Время: {minutes}:{seconds:02d}\nОчки: {self.score}'
+        self.last_shot_time = current_time
+        
+        # Проверяем попадание в NPC
+        attack_range = 3.0
+        attack_angle = self.player_angle
+        attack_fov = math.pi / 6  # 30 градусов
+        
+        npc_to_remove = []
+        
+        for i, npc in enumerate(self.npcs):
+            # Вычисляем вектор к NPC
+            dx = npc.x - self.player_pos[0]
+            dy = npc.y - self.player_pos[1]
+            distance = math.sqrt(dx*dx + dy*dy)
+            
+            if distance > attack_range:
+                continue
+            
+            # Вычисляем угол к NPC
+            angle_to_npc = math.atan2(dy, dx)
+            angle_diff = abs(angle_to_npc - attack_angle)
+            
+            # Нормализуем разницу углов
+            if angle_diff > math.pi:
+                angle_diff = 2 * math.pi - angle_diff
+            
+            # Проверяем, находится ли NPC в поле атаки
+            if angle_diff < attack_fov / 2:
+                # Проверяем, нет ли стены между игроком и NPC
+                hit_wall = False
+                test_distance = 0
+                step = 0.1
+                while test_distance < distance and not hit_wall:
+                    test_distance += step
+                    test_x = int(self.player_pos[0] + math.cos(angle_to_npc) * test_distance)
+                    test_y = int(self.player_pos[1] + math.sin(angle_to_npc) * test_distance)
+                    
+                    if (test_x < 0 or test_x >= len(self.map[0]) or 
+                        test_y < 0 or test_y >= len(self.map)):
+                        break
+                    
+                    if self.map[test_y][test_x] == 1:
+                        hit_wall = True
+                        break
+                
+                if not hit_wall:
+                    # Попадание!
+                    if npc.take_damage():
+                        npc_to_remove.append(i)
+                        self.score += 100
+                    else:
+                        self.score += 10
+        
+        # Удаляем уничтоженных NPC
+        for i in sorted(npc_to_remove, reverse=True):
+            self.npcs.pop(i)
+    
+    def update(self, dt):
+        if self.is_paused or self.game_over:
+            return
         
         # Обновляем позиции элементов управления при изменении размера окна
         if hasattr(self, 'pause_button'):
             self.pause_button.pos = (self.width - 90, self.height - 90)
         if hasattr(self, 'reset_button'):
             self.reset_button.pos = (10, self.height - 90)
-        if hasattr(self, 'stats_label'):
-            self.stats_label.pos = (self.width/2 - 125, self.height - 100)
-            # Обновляем фон
-            with self.stats_label.canvas.before:
-                self.stats_label.canvas.before.clear()
-                Color(0, 0, 0, 0.7)
-                Rectangle(pos=self.stats_label.pos, size=self.stats_label.size)
+        if hasattr(self, 'attack_button'):
+            self.attack_button.pos = (self.width - 110, 100)
         
-        control_type = self.settings.get('control_type', 'Джойстики')
+        # Обновляем джойстики
+        if hasattr(self, 'move_joystick'):
+            self.move_joystick.pos = (50, 50)
+        if hasattr(self, 'rotate_joystick'):
+            self.rotate_joystick.pos = (self.width - 250, 50)
         
-        # Управление с клавиатуры (для ПК)
-        if hasattr(self, '_keyboard') and self._keyboard:
-            speed = self.move_speed * dt
-            rot_speed = self.rot_speed * dt
-            
-            if 'w' in self.keys_pressed:
-                self.player_pos[0] += math.cos(self.player_angle) * speed
-                self.player_pos[1] += math.sin(self.player_angle) * speed
-            if 's' in self.keys_pressed:
-                self.player_pos[0] -= math.cos(self.player_angle) * speed
-                self.player_pos[1] -= math.sin(self.player_angle) * speed
-            if 'a' in self.keys_pressed:
-                self.player_angle -= rot_speed
-            if 'd' in self.keys_pressed:
-                self.player_angle += rot_speed
+        # Уменьшаем мигание при получении урона
+        if self.damage_flash > 0:
+            self.damage_flash = max(0, self.damage_flash - dt * 2)
         
-        # Управление с джойстиков (если выбран этот тип)
-        if control_type in ['Джойстики', 'Гибрид'] and hasattr(self, 'move_joystick'):
-            move_x, move_y = self.move_joystick.stick_pos
-            rotate_x, rotate_y = self.rotate_joystick.stick_pos if hasattr(self, 'rotate_joystick') else (0, 0)
-            
-            # Инвертирование оси Y если нужно
-            if self.settings.get('invert_y', False):
-                move_y = -move_y
-            
-            # Движение
-            move_forward = move_y * self.move_speed * dt
-            move_sideways = move_x * self.move_speed * dt
-            
-            # Обновление позиции игрока
-            self.player_pos[0] += math.cos(self.player_angle) * move_forward
-            self.player_pos[1] += math.sin(self.player_angle) * move_forward
-            
-            # Боковое движение
-            self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * move_sideways
-            self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * move_sideways
-            
-            # Вращение от джойстика
-            rotation = rotate_x * self.rot_speed * dt
-            self.player_angle += rotation
+        # Обновление управления в зависимости от типа
+        control_type = self.settings.get('control_type', 0)
         
-        # Управление с кнопок (если выбран этот тип или гибрид)
-        if control_type in ['Кнопки', 'Гибрид']:
-            speed = self.move_speed * dt
-            rot_speed = self.rot_speed * dt
-            
-            # Движение вперед/назад
-            if self.move_forward:
-                self.player_pos[0] += math.cos(self.player_angle) * speed
-                self.player_pos[1] += math.sin(self.player_angle) * speed
-            if self.move_backward:
-                self.player_pos[0] -= math.cos(self.player_angle) * speed
-                self.player_pos[1] -= math.sin(self.player_angle) * speed
-            
-            # Боковое движение
-            if self.move_left:
-                self.player_pos[0] += math.cos(self.player_angle - math.pi/2) * speed
-                self.player_pos[1] += math.sin(self.player_angle - math.pi/2) * speed
-            if self.move_right:
-                self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * speed
-                self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * speed
-            
-            # Поворот с кнопок
-            if self.rotate_left:
-                self.player_angle -= rot_speed
-            if self.rotate_right:
-                self.player_angle += rot_speed
+        if control_type == 0:  # Только джойстики
+            if hasattr(self, 'move_joystick') and hasattr(self, 'rotate_joystick'):
+                move_x, move_y = self.move_joystick.stick_pos
+                rotate_x, rotate_y = self.rotate_joystick.stick_pos
+                
+                # Инвертирование оси Y если нужно
+                if self.settings.get('invert_y', False):
+                    move_y = -move_y
+                
+                # Движение
+                move_forward = move_y * self.move_speed * dt
+                move_sideways = move_x * self.move_speed * dt
+                
+                # Обновление позиции игрока
+                self.player_pos[0] += math.cos(self.player_angle) * move_forward
+                self.player_pos[1] += math.sin(self.player_angle) * move_forward
+                
+                # Боковое движение
+                self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * move_sideways
+                self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * move_sideways
+                
+                # Вращение от джойстика
+                rotation = rotate_x * self.rot_speed * dt
+                self.player_angle += rotation
         
-        # Проверка столкновений
+        elif control_type == 1:  # Только клавиатура
+            self.update_keyboard_controls(dt)
+        
+        else:  # Оба типа управления
+            # Сначала обновляем клавиатуру
+            self.update_keyboard_controls(dt)
+            
+            # Затем добавляем управление джойстиками
+            if hasattr(self, 'move_joystick') and hasattr(self, 'rotate_joystick'):
+                move_x, move_y = self.move_joystick.stick_pos
+                rotate_x, rotate_y = self.rotate_joystick.stick_pos
+                
+                # Инвертирование оси Y если нужно
+                if self.settings.get('invert_y', False):
+                    move_y = -move_y
+                
+                # Движение от джойстика
+                move_forward = move_y * self.move_speed * dt
+                move_sideways = move_x * self.move_speed * dt
+                
+                # Обновление позиции игрока
+                self.player_pos[0] += math.cos(self.player_angle) * move_forward
+                self.player_pos[1] += math.sin(self.player_angle) * move_forward
+                
+                # Боковое движение
+                self.player_pos[0] += math.cos(self.player_angle + math.pi/2) * move_sideways
+                self.player_pos[1] += math.sin(self.player_angle + math.pi/2) * move_sideways
+                
+                # Вращение от джойстика
+                rotation = rotate_x * self.rot_speed * dt
+                self.player_angle += rotation
+        
+        # Обновляем NPC
+        npcs_to_remove = []
+        for i, npc in enumerate(self.npcs):
+            result = npc.update(self.player_pos[0], self.player_pos[1], dt, self.map)
+            if result == "damage":
+                # Игрок получает урон
+                self.player_health -= npc.attack_damage
+                self.damage_flash = 1.0
+                
+                if self.player_health <= 0:
+                    self.game_over = True
+                    self.show_game_over()
+                    return
+        
+        # Проверка столкновений с игроком
         self.check_collisions()
         
         # Отрисовка только в graphics_widget
         self.graphics_widget.canvas.clear()
         with self.graphics_widget.canvas:
+            # Эффект мигания при получении урона
+            if self.damage_flash > 0:
+                Color(1.0, 0.0, 0.0, self.damage_flash * 0.3)
+                Rectangle(pos=(0, 0), size=(self.width, self.height))
+            
             # Небо и пол
             Color(0.2, 0.2, 0.8)
             Rectangle(pos=(0, self.height/2), size=(self.width, self.height/2))
@@ -1120,8 +1268,206 @@ class RaycasterGame(FloatLayout):
                     size=(wall_width, wall_height)
                 )
             
-            # Мини-карта
-            self.draw_minimap()
+            # Отрисовка NPC
+            for npc in self.npcs:
+                self.draw_npc(npc)
+            
+            # Отрисовка HUD поверх всего
+            self.draw_hud()
+    
+    def draw_npc(self, npc):
+        # Вычисляем относительную позицию NPC
+        dx = npc.x - self.player_pos[0]
+        dy = npc.y - self.player_pos[1]
+        
+        # Расстояние до NPC
+        distance = math.sqrt(dx*dx + dy*dy)
+        if distance > 15:  # Не рисуем далеких NPC
+            return
+        
+        # Угол к NPC
+        npc_angle = math.atan2(dy, dx)
+        
+        # Разница между направлением игрока и NPC
+        angle_diff = npc_angle - self.player_angle
+        
+        # Нормализуем разницу углов
+        if angle_diff > math.pi:
+            angle_diff -= 2 * math.pi
+        elif angle_diff < -math.pi:
+            angle_diff += 2 * math.pi
+        
+        # Проверяем, находится ли NPC в поле зрения
+        if abs(angle_diff) < self.fov / 2:
+            # Вычисляем позицию по горизонтали на экране
+            screen_x = (angle_diff + self.fov/2) / self.fov * self.width
+            
+            # Размер NPC на экране (чем дальше, тем меньше)
+            npc_height = self.height / (distance + 0.5) * 1.5
+            npc_width = npc_height * 0.8
+            
+            # Проверяем, не закрыт ли NPC стеной
+            ray_distance = self.cast_ray(npc_angle, distance)
+            if ray_distance < distance - 0.5:
+                return  # NPC закрыт стеной
+            
+            # Рисуем NPC
+            Color(*npc.color)
+            Rectangle(
+                pos=(screen_x - npc_width/2, (self.height - npc_height)/2),
+                size=(npc_width, npc_height)
+            )
+            
+            # Индикатор здоровья над NPC
+            health_width = npc_width
+            health_height = 5
+            health_ratio = npc.health / 3.0
+            
+            # Фон индикатора здоровья
+            Color(0.2, 0.2, 0.2, 0.8)
+            Rectangle(
+                pos=(screen_x - health_width/2, (self.height - npc_height)/2 + npc_height),
+                size=(health_width, health_height)
+            )
+            
+            # Сам индикатор здоровья
+            Color(0.2, 0.8, 0.2, 0.8)
+            Rectangle(
+                pos=(screen_x - health_width/2, (self.height - npc_height)/2 + npc_height),
+                size=(health_width * health_ratio, health_height)
+            )
+    
+    def draw_hud(self):
+        # Панель здоровья
+        health_width = 200
+        health_height = 20
+        health_x = 20
+        health_y = self.height - 40
+        
+        # Фон здоровья
+        Color(0.2, 0.2, 0.2, 0.8)
+        Rectangle(
+            pos=(health_x, health_y),
+            size=(health_width, health_height)
+        )
+        
+        # Индикатор здоровья
+        health_ratio = self.player_health / 100.0
+        if health_ratio > 0.6:
+            health_color = (0.2, 0.8, 0.2, 0.8)
+        elif health_ratio > 0.3:
+            health_color = (0.8, 0.8, 0.2, 0.8)
+        else:
+            health_color = (0.8, 0.2, 0.2, 0.8)
+        
+        Color(*health_color)
+        Rectangle(
+            pos=(health_x, health_y),
+            size=(health_width * health_ratio, health_height)
+        )
+        
+        # Текст здоровья
+        Color(1, 1, 1, 1)
+        health_text = f"Здоровье: {int(self.player_health)}"
+        self.draw_text(health_text, health_x + health_width + 10, health_y, 20)
+        
+        # Счет
+        score_x = 20
+        score_y = health_y - 30
+        Color(1, 1, 1, 1)
+        score_text = f"Счет: {self.score}"
+        self.draw_text(score_text, score_x, score_y, 20)
+        
+        # Количество NPC
+        npc_x = 20
+        npc_y = score_y - 30
+        npc_text = f"NPC осталось: {len(self.npcs)}"
+        self.draw_text(npc_text, npc_x, npc_y, 20)
+        
+        
+        
+        # Сообщение о победе
+        if len(self.npcs) == 0 and not self.game_over:
+            Color(0.2, 0.8, 0.2, 0.8)
+            Rectangle(
+                pos=(self.width/2 - 150, self.height/2 - 50),
+                size=(300, 100)
+            )
+            Color(1, 1, 1, 1)
+            self.draw_text("ПОБЕДА!", self.width/2 - 50, self.height/2, 40)
+            self.draw_text(f"Счет: {self.score}", self.width/2 - 60, self.height/2 - 30, 30)
+    
+    def draw_text(self, text, x, y, font_size):
+        # Простая функция для рисования текста
+        from kivy.core.text import Label as CoreLabel
+        label = CoreLabel(text=text, font_size=font_size)
+        label.refresh()
+        texture = label.texture
+        
+        Color(1, 1, 1, 1)
+        Rectangle(pos=(x, y), size=texture.size, texture=texture)
+    
+    def show_game_over(self):
+        # Создаем popup с сообщением о конце игры
+        content = BoxLayout(orientation='vertical', spacing=20, padding=30)
+        
+        title = Label(
+            text='ИГРА ОКОНЧЕНА',
+            font_size=50,
+            color=(1, 0.2, 0.2, 1)
+        )
+        
+        score_label = Label(
+            text=f'Ваш счет: {self.score}',
+            font_size=40,
+            color=(1, 1, 1, 1)
+        )
+        
+        buttons_layout = BoxLayout(orientation='horizontal', spacing=20)
+        
+        btn_restart = Button(
+            text='ЗАНОВО',
+            font_size=30,
+            background_color=(0.2, 0.8, 0.2, 1),
+            background_normal=''
+        )
+        btn_restart.bind(on_press=lambda x: self.restart_game())
+        
+        btn_menu = Button(
+            text='В МЕНЮ',
+            font_size=30,
+            background_color=(0.8, 0.2, 0.2, 1),
+            background_normal=''
+        )
+        btn_menu.bind(on_press=lambda x: self.go_to_menu())
+        
+        buttons_layout.add_widget(btn_restart)
+        buttons_layout.add_widget(btn_menu)
+        
+        content.add_widget(title)
+        content.add_widget(score_label)
+        content.add_widget(buttons_layout)
+        
+        self.game_over_popup = Popup(
+            title='',
+            content=content,
+            size_hint=(0.7, 0.5),
+            auto_dismiss=False,
+            background=''
+        )
+        self.game_over_popup.open()
+    
+    def restart_game(self):
+        if hasattr(self, 'game_over_popup'):
+            self.game_over_popup.dismiss()
+        self.reset_game()
+        self.game_over = False
+    
+    def go_to_menu(self):
+        if hasattr(self, 'game_over_popup'):
+            self.game_over_popup.dismiss()
+        app = App.get_running_app()
+        app.sm.current = 'menu'
     
     def check_collisions(self):
         player_x, player_y = self.player_pos
@@ -1147,54 +1493,6 @@ class RaycasterGame(FloatLayout):
                         self.player_pos[0] = x + 1.1
                     else:
                         self.player_pos[0] = x - 0.1
-    
-    def draw_minimap(self):
-        minimap_size = 150
-        if len(self.map) > 0:
-            cell_size = minimap_size / len(self.map)
-        else:
-            return
-        
-        # Фон мини-карты
-        Color(0, 0, 0, 0.7)
-        Rectangle(
-            pos=(self.width - minimap_size - 20, 20),
-            size=(minimap_size, minimap_size)
-        )
-        
-        # Стены на мини-карте
-        for y in range(len(self.map)):
-            for x in range(len(self.map[0])):
-                if self.map[y][x] == 1:
-                    Color(1, 1, 1, 0.9)
-                    Rectangle(
-                        pos=(self.width - minimap_size - 20 + x * cell_size,
-                             20 + y * cell_size),
-                        size=(cell_size - 1, cell_size - 1)
-                    )
-        
-        # Игрок на мини-карте
-        player_x = self.player_pos[0] * cell_size
-        player_y = self.player_pos[1] * cell_size
-        
-        Color(0, 1, 0, 1)
-        Rectangle(
-            pos=(self.width - minimap_size - 20 + player_x - 3,
-                 20 + player_y - 3),
-            size=(6, 6)
-        )
-        
-        # Направление игрока
-        Color(1, 0, 0, 1)
-        Line(
-            points=[
-                self.width - minimap_size - 20 + player_x,
-                20 + player_y,
-                self.width - minimap_size - 20 + player_x + math.cos(self.player_angle) * 15,
-                20 + player_y + math.sin(self.player_angle) * 15
-            ],
-            width=2
-        )
 
 class RaycasterApp(App):
     def __init__(self, **kwargs):
@@ -1234,12 +1532,16 @@ class RaycasterApp(App):
             self.game_screen.game_widget.move_speed = 2.5 * settings['sensitivity']
             self.game_screen.game_widget.rot_speed = 2.5 * settings['sensitivity']
             
-            # Обновляем элементы управления
-            self.game_screen.game_widget.create_controls()
-            
             # Обновляем игровой цикл с новым FPS
             Clock.unschedule(self.game_screen.game_widget.update)
             Clock.schedule_interval(self.game_screen.game_widget.update, 1/settings['fps'])
+            
+            # Пересоздаем элементы управления с новыми настройками
+            self.game_screen.game_widget.create_controls()
+            
+            # Пересоздаем NPC с новыми настройками
+            if hasattr(self.game_screen.game_widget, 'create_npcs'):
+                self.game_screen.game_widget.create_npcs()
 
 if __name__ == '__main__':
     # Отключаем лишние логи
