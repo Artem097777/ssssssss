@@ -1,10 +1,10 @@
 [app]
 
 # (str) Title of your application
-title = My Shooter
+title = My
 
 # (str) Package name
-package.name = myshooter
+package.name = mysho
 
 # (str) Package domain (needed for android/ios packaging)
 package.domain = org.test
@@ -27,7 +27,7 @@ source.include_exts = py,png,jpg,kv,obj,mtl
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 0.1
+version = 4.45
 
 # (str) Application versioning (method 2)
 # version.regex = __version__ = ['"](.*)['"]
