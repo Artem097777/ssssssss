@@ -1,1140 +1,1093 @@
-import kivy
-kivy.require('2.0.0')
-
 from kivy.app import App
 from kivy.uix.widget import Widget
-from kivy.core.window import Window
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.slider import Slider
+from kivy.uix.switch import Switch
+from kivy.uix.popup import Popup
+from kivy.uix.image import Image
+from kivy.properties import NumericProperty, ObjectProperty, BooleanProperty, StringProperty, ListProperty
 from kivy.clock import Clock
-from kivy.graphics import *
+from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle, Ellipse, Line, InstructionGroup
+from kivy.utils import platform
+from kivy.metrics import dp
+from kivy.animation import Animation
 import math
 import random
+import json
+import os
 
-# Настройки окна
-Window.size = (1024, 768)
-Window.clearcolor = (0.1, 0.1, 0.1, 1)
-
-class Vector3:
-    def __init__(self, x=0, y=0, z=0):
-        self.x = x
-        self.y = y
-        self.z = z
+class SmartScreenDetector:
+    """Класс для автоматического определения типа устройства и размера экрана"""
     
-    def __add__(self, other):
-        return Vector3(self.x + other.x, self.y + other.y, self.z + other.z)
-    
-    def __sub__(self, other):
-        return Vector3(self.x - other.x, self.y - other.y, self.z - other.z)
-    
-    def __mul__(self, scalar):
-        return Vector3(self.x * scalar, self.y * scalar, self.z * scalar)
-    
-    def __copy__(self):
-        return Vector3(self.x, self.y, self.z)
-    
-    def copy(self):
-        return Vector3(self.x, self.y, self.z)
-    
-    def normalize(self):
-        length = math.sqrt(self.x*self.x + self.y*self.y + self.z*self.z)
-        if length > 0:
-            return Vector3(self.x/length, self.y/length, self.z/length)
-        return Vector3(0, 0, 0)
-    
-    def length(self):
-        return math.sqrt(self.x*self.x + self.y*self.y + self.z*self.z)
-    
-    def rotate_y(self, angle):
-        cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
-        x = self.x * cos_a + self.z * sin_a
-        z = -self.x * sin_a + self.z * cos_a
-        return Vector3(x, self.y, z)
-    
-    def rotate_x(self, angle):
-        cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
-        y = self.y * cos_a - self.z * sin_a
-        z = self.y * sin_a + self.z * cos_a
-        return Vector3(self.x, y, z)
-    
-    def cross(self, other):
-        """Векторное произведение"""
-        return Vector3(
-            self.y * other.z - self.z * other.y,
-            self.z * other.x - self.x * other.z,
-            self.x * other.y - self.y * other.x
-        )
-    
-    def dot(self, other):
-        """Скалярное произведение"""
-        return self.x * other.x + self.y * other.y + self.z * other.z
-    
-    def distance(self, other):
-        """Расстояние до другой точки"""
-        dx = self.x - other.x
-        dy = self.y - other.y
-        dz = self.z - other.z
-        return math.sqrt(dx*dx + dy*dy + dz*dz)
-    
-    def distance2d(self, other):
-        """Расстояние только по XZ плоскости"""
-        dx = self.x - other.x
-        dz = self.z - other.z
-        return math.sqrt(dx*dx + dz*dz)
-
-class BoundingBox:
-    """Ограничивающая рамка для столкновений"""
-    def __init__(self, min_point, max_point):
-        self.min = Vector3(min(min_point.x, max_point.x), 
-                          min(min_point.y, max_point.y), 
-                          min(min_point.z, max_point.z))
-        self.max = Vector3(max(min_point.x, max_point.x), 
-                          max(min_point.y, max_point.y), 
-                          max(min_point.z, max_point.z))
-    
-    def get_center(self):
-        return Vector3(
-            (self.min.x + self.max.x) / 2,
-            (self.min.y + self.max.y) / 2,
-            (self.min.z + self.max.z) / 2
-        )
-    
-    def intersects(self, other):
-        """Проверка пересечения с другой рамкой"""
-        return (self.min.x <= other.max.x and self.max.x >= other.min.x and
-                self.min.y <= other.max.y and self.max.y >= other.min.y and
-                self.min.z <= other.max.z and self.max.z >= other.min.z)
-    
-    def contains_point(self, point, margin=0):
-        """Проверяет, содержит ли рамка точку"""
-        return (self.min.x - margin <= point.x <= self.max.x + margin and
-                self.min.y - margin <= point.y <= self.max.y + margin and
-                self.min.z - margin <= point.z <= self.max.z + margin)
-
-class Camera:
-    def __init__(self):
-        self.position = Vector3(2, 1.8, 2)
-        self.rotation = Vector3(0, math.pi/4, 0)
-        self.forward = Vector3(0, 0, 1)
-        self.right = Vector3(1, 0, 0)
-        self.up = Vector3(0, 1, 0)
-        
-        # Размеры коллизии игрока (цилиндр)
-        self.radius = 0.4  # радиус коллизии
-        self.height = 1.8  # высота игрока
-        
-        # Физические параметры
-        self.velocity = Vector3(0, 0, 0)
-        self.gravity = -25.0
-        self.grounded = True
-        self.jump_power = 10.0
-        self.move_speed = 4.0
-        self.run_speed = 7.0
-        self.current_speed = self.move_speed
-        self.acceleration = 30.0
-        self.friction = 15.0
-        self.jump_count = 0
-        self.max_jumps = 2
-        self.on_stairs = False
-        self.stair_speed = 3.0
-        
-        # Параметры взгляда
-        self.look_speed = 0.1
-        self.mouse_sensitivity = 0.003
-        
-        self.update_vectors()
-    
-    def update_vectors(self):
-        cos_y = math.cos(self.rotation.y)
-        sin_y = math.sin(self.rotation.y)
-        cos_x = math.cos(self.rotation.x)
-        sin_x = math.sin(self.rotation.x)
-        
-        self.forward = Vector3(
-            sin_y * cos_x,
-            sin_x,
-            cos_y * cos_x
-        ).normalize()
-        
-        world_up = Vector3(0, 1, 0)
-        self.right = world_up.cross(self.forward).normalize()
-        self.up = self.forward.cross(self.right).normalize()
-    
-    def get_bounding_box(self):
-        """Возвращает ограничивающую рамку игрока"""
-        # Для простоты используем куб вместо цилиндра
-        half_size = self.radius
-        return BoundingBox(
-            Vector3(self.position.x - half_size, 
-                   self.position.y, 
-                   self.position.z - half_size),
-            Vector3(self.position.x + half_size, 
-                   self.position.y + self.height, 
-                   self.position.z + half_size)
-        )
-    
-    def check_wall_collision(self, walls, old_pos):
-        """Проверяет столкновение со стенами и корректирует позицию"""
-        # Сначала проверяем по горизонтали (XZ)
-        test_pos = self.position.copy()
-        
-        # Проверяем каждую стену
-        for wall in walls:
-            wall_bb = wall.get_bounding_box()
-            player_bb = self.get_bounding_box()
+    @staticmethod
+    def get_device_type():
+        """Определяем тип устройства"""
+        if platform == 'android' or platform == 'ios':
+            # Мобильное устройство
+            aspect_ratio = Window.width / Window.height if Window.height > 0 else 0
             
-            if wall_bb.intersects(player_bb):
-                # Столкновение обнаружено, корректируем позицию
-                dx = 0
-                dz = 0
-                
-                # Определяем, с какой стороны произошло столкновение
-                player_center = player_bb.get_center()
-                wall_center = wall_bb.get_center()
-                
-                # Расстояние по осям
-                dist_x = abs(player_center.x - wall_center.x)
-                dist_z = abs(player_center.z - wall_center.z)
-                
-                # Толщина стенки для выталкивания
-                penetration = self.radius + 0.1
-                
-                if dist_x > dist_z:
-                    # Столкновение с левой/правой стороной
-                    if player_center.x < wall_center.x:
-                        dx = wall_bb.min.x - player_bb.max.x - 0.01
-                    else:
-                        dx = wall_bb.max.x - player_bb.min.x + 0.01
-                    self.velocity.x = 0
+            if aspect_ratio > 1.4:
+                return 'phone_landscape'
+            elif aspect_ratio < 0.7:
+                return 'phone_portrait'
+            else:
+                diagonal = math.sqrt(Window.width**2 + Window.height**2) / Window.dpi
+                if diagonal > 7:
+                    return 'tablet'
                 else:
-                    # Столкновение с передней/задней стороной
-                    if player_center.z < wall_center.z:
-                        dz = wall_bb.min.z - player_bb.max.z - 0.01
-                    else:
-                        dz = wall_bb.max.z - player_bb.min.z + 0.01
-                    self.velocity.z = 0
-                
-                # Применяем корректировку
-                self.position.x += dx
-                self.position.z += dz
-        
-        # После коррекции проверяем вертикальные столкновения
-        for wall in walls:
-            wall_bb = wall.get_bounding_box()
-            player_bb = self.get_bounding_box()
-            
-            if wall_bb.intersects(player_bb):
-                # Вертикальное столкновение (потолок/пол стены)
-                player_center = player_bb.get_center()
-                wall_center = wall_bb.get_center()
-                
-                # Если игрок падает на стену сверху
-                if old_pos.y > wall_bb.max.y and self.position.y <= wall_bb.max.y:
-                    self.position.y = wall_bb.max.y + 0.01
-                    self.velocity.y = 0
-                # Если игрок ударяется головой о стену снизу
-                elif old_pos.y + self.height < wall_bb.min.y and self.position.y + self.height >= wall_bb.min.y:
-                    self.position.y = wall_bb.min.y - self.height - 0.01
-                    self.velocity.y = 0
-    
-    def update_physics(self, dt, walls, floor_y=0):
-        """Обновление физики с учетом столкновений"""
-        old_pos = self.position.copy()
-        
-        # Если на лестнице - другая физика
-        if self.on_stairs:
-            self.velocity.y = 0
-            self.grounded = True
-            return
-        
-        # Применяем гравитацию
-        if not self.grounded:
-            self.velocity.y += self.gravity * dt
-        
-        # Применяем трение по горизонтали
-        if self.grounded:
-            self.velocity.x *= 1 - self.friction * dt
-            self.velocity.z *= 1 - self.friction * dt
-            
-            if abs(self.velocity.x) < 0.1:
-                self.velocity.x = 0
-            if abs(self.velocity.z) < 0.1:
-                self.velocity.z = 0
-        
-        # Обновляем позицию
-        self.position.x += self.velocity.x * dt
-        self.position.z += self.velocity.z * dt
-        self.position.y += self.velocity.y * dt
-        
-        # Проверяем столкновение со стенами
-        self.check_wall_collision(walls, old_pos)
-        
-        # Проверяем столкновение с землей
-        if self.position.y < floor_y + 1.8:
-            self.position.y = floor_y + 1.8
-            self.velocity.y = 0
-            self.grounded = True
-            self.jump_count = 0
-    
-    def move(self, direction_x, direction_z, dt, on_stairs=False):
-        """Движение в направлении"""
-        if on_stairs:
-            if direction_z != 0:
-                self.position.y += direction_z * self.stair_speed * dt
+                    return 'phone'
         else:
-            if direction_x != 0 or direction_z != 0:
-                move_direction = Vector3(direction_x, 0, direction_z).normalize()
-                
-                rotated_direction = Vector3(
-                    move_direction.x * self.right.x + move_direction.z * self.forward.x,
-                    0,
-                    move_direction.x * self.right.z + move_direction.z * self.forward.z
-                ).normalize()
-                
-                target_velocity_x = rotated_direction.x * self.current_speed
-                target_velocity_z = rotated_direction.z * self.current_speed
-                
-                self.velocity.x += (target_velocity_x - self.velocity.x) * self.acceleration * dt
-                self.velocity.z += (target_velocity_z - self.velocity.z) * self.acceleration * dt
+            # Десктопное устройство
+            if Window.width >= 1920 and Window.height >= 1080:
+                return 'desktop_large'
+            elif Window.width >= 1366 and Window.height >= 768:
+                return 'desktop_medium'
+            else:
+                return 'desktop_small'
     
-    def move_on_stairs(self, direction, dt):
-        """Движение вверх/вниз по лестнице"""
-        self.position.y += direction * self.stair_speed * dt
-    
-    def jump(self):
-        """ПРЫЖОК - ПРОСТОЙ И МОМЕНТАЛЬНЫЙ"""
-        if not self.on_stairs:  # Не прыгать на лестнице
-            if self.jump_count < self.max_jumps:
-                self.velocity.y = self.jump_power
-                self.grounded = False
-                self.jump_count += 1
-                return True
-        return False
-    
-    def run(self, is_running):
-        """Режим бега"""
-        if is_running:
-            self.current_speed = self.run_speed
-        else:
-            self.current_speed = self.move_speed
-    
-    def rotate_with_keys(self, dx, dy):
-        """Поворот камеры с помощью клавиш"""
-        self.rotation.y += dx * self.look_speed
-        self.rotation.x += dy * self.look_speed
+    @staticmethod
+    def get_screen_metrics():
+        """Получаем метрики экрана для адаптивной настройки"""
+        device_type = SmartScreenDetector.get_device_type()
         
-        self.rotation.x = max(-math.pi/2 + 0.1, min(math.pi/2 - 0.1, self.rotation.x))
-        self.update_vectors()
-    
-    def look(self, dx, dy):
-        """Поворот камеры мышью"""
-        self.rotation.y += dx * self.mouse_sensitivity
-        self.rotation.x += dy * self.mouse_sensitivity
+        metrics = {
+            'device_type': device_type,
+            'width': Window.width,
+            'height': Window.height,
+            'dpi': Window.dpi,
+            'aspect_ratio': Window.width / Window.height if Window.height > 0 else 0,
+            'is_mobile': platform in ['android', 'ios'],
+            'is_tablet': device_type == 'tablet',
+            'is_phone': 'phone' in device_type,
+            'is_desktop': 'desktop' in device_type
+        }
         
-        self.rotation.x = max(-math.pi/2 + 0.1, min(math.pi/2 - 0.1, self.rotation.x))
-        self.update_vectors()
-
-class Wall:
-    """Стена лабиринта с физической коллизией"""
-    def __init__(self, x=0, y=0, z=0, width=1, depth=1, height=3):
-        self.position = Vector3(x, y, z)
-        self.width = width
-        self.depth = depth
-        self.height = height
-        self.color = (0.7, 0.7, 0.7, 1)
-    
-    def get_bounding_box(self):
-        """Возвращает ограничивающую рамку стены"""
-        w2 = self.width / 2
-        d2 = self.depth / 2
-        
-        return BoundingBox(
-            Vector3(self.position.x - w2, 
-                   self.position.y, 
-                   self.position.z - d2),
-            Vector3(self.position.x + w2, 
-                   self.position.y + self.height, 
-                   self.position.z + d2)
-        )
-    
-    def get_vertices(self):
-        """Возвращает вершины стены"""
-        w2 = self.width / 2
-        d2 = self.depth / 2
-        
-        vertices = [
-            Vector3(-w2, 0, -d2),
-            Vector3(w2, 0, -d2),
-            Vector3(w2, 0, d2),
-            Vector3(-w2, 0, d2),
-            Vector3(-w2, self.height, -d2),
-            Vector3(w2, self.height, -d2),
-            Vector3(w2, self.height, d2),
-            Vector3(-w2, self.height, d2)
-        ]
-        
-        for i in range(8):
-            vertices[i] = vertices[i] + self.position
-        
-        return vertices
-    
-    def get_faces(self):
-        """Возвращает грани стены"""
-        vertices = self.get_vertices()
-        
-        faces = [
-            [vertices[4], vertices[5], vertices[1], vertices[0]],
-            [vertices[7], vertices[6], vertices[2], vertices[3]],
-            [vertices[4], vertices[0], vertices[3], vertices[7]],
-            [vertices[5], vertices[1], vertices[2], vertices[6]],
-            [vertices[4], vertices[5], vertices[6], vertices[7]],
-            [vertices[0], vertices[1], vertices[2], vertices[3]]
-        ]
-        
-        return faces
-    
-    def is_player_colliding(self, player_pos, player_radius, player_height):
-        """Проверяет столкновение игрока со стеной"""
-        # Упрощенная проверка столкновения AABB с цилиндром
-        wall_bb = self.get_bounding_box()
-        
-        # Находим ближайшую точку стены к игроку
-        closest_x = max(wall_bb.min.x, min(player_pos.x, wall_bb.max.x))
-        closest_y = max(wall_bb.min.y, min(player_pos.y, wall_bb.max.y))
-        closest_z = max(wall_bb.min.z, min(player_pos.z, wall_bb.max.z))
-        
-        # Проверяем расстояние по горизонтали
-        dx = player_pos.x - closest_x
-        dz = player_pos.z - closest_z
-        horizontal_distance = math.sqrt(dx*dx + dz*dz)
-        
-        # Проверяем пересечение по вертикали
-        vertical_overlap = (player_pos.y < wall_bb.max.y and 
-                           player_pos.y + player_height > wall_bb.min.y)
-        
-        return horizontal_distance < player_radius and vertical_overlap
-
-class Staircase:
-    """Лестница между этажами"""
-    def __init__(self, x=0, z=0, width=2, depth=6, height=5, steps=12):
-        self.position = Vector3(x, 0, z)
-        self.width = width
-        self.depth = depth
-        self.height = height
-        self.steps = steps
-        self.step_height = height / steps
-        self.step_depth = depth / steps
-        self.color = (0.6, 0.4, 0.2, 1)
-    
-    def get_bounding_box(self):
-        """Возвращает ограничивающую рамку всей лестницы"""
-        w2 = self.width / 2
-        d2 = self.depth / 2
-        
-        return BoundingBox(
-            Vector3(self.position.x - w2, 
-                   self.position.y, 
-                   self.position.z - d2),
-            Vector3(self.position.x + w2, 
-                   self.position.y + self.height, 
-                   self.position.z + d2)
-        )
-    
-    def get_steps_vertices(self):
-        """Возвращает вершины всех ступенек"""
-        steps_vertices = []
-        
-        for i in range(self.steps):
-            step_y = i * self.step_height
-            step_z = i * self.step_depth
-            
-            w2 = self.width / 2
-            vertices = [
-                Vector3(-w2, step_y, -self.depth/2 + step_z),
-                Vector3(w2, step_y, -self.depth/2 + step_z),
-                Vector3(w2, step_y, -self.depth/2 + step_z + self.step_depth),
-                Vector3(-w2, step_y, -self.depth/2 + step_z + self.step_depth),
-                Vector3(-w2, step_y + self.step_height, -self.depth/2 + step_z),
-                Vector3(w2, step_y + self.step_height, -self.depth/2 + step_z),
-                Vector3(w2, step_y + self.step_height, -self.depth/2 + step_z + self.step_depth),
-                Vector3(-w2, step_y + self.step_height, -self.depth/2 + step_z + self.step_depth)
-            ]
-            
-            for j in range(8):
-                vertices[j] = vertices[j] + self.position
-            
-            steps_vertices.append(vertices)
-        
-        return steps_vertices
-    
-    def is_player_near(self, player_pos, radius=3.0):
-        """Проверяет, находится ли игрок рядом с лестницей"""
-        distance = math.sqrt(
-            (player_pos.x - self.position.x)**2 +
-            (player_pos.z - self.position.z)**2
-        )
-        return distance < radius and player_pos.y < self.height + 2
-
-class Game3D(Widget):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        
-        # Текущий этаж
-        self.current_floor = 1
-        self.floor_height = 5
-        
-        # Создаем камеру
-        self.camera = Camera()
-        self.camera.update_vectors()
-        
-        # Создаем лабиринт
-        self.walls_first_floor = []
-        self.walls_second_floor = []
-        self.create_maze()
-        
-        # Создаем лестницу
-        self.staircase = Staircase(x=-5, z=-5, width=3, depth=8, height=5, steps=15)
-        
-        # Создаем пол
-        self.create_floors()
-        
-        # Управление
-        self.keys_pressed = set()
-        self.last_mouse_pos = None
-        self.mouse_sensitivity = 0.003
-        
-        # Простая переменная для прыжка
-        self.space_pressed = False
-        
-        # FPS счетчик
-        self.frame_count = 0
-        self.fps = 0
-        self.fps_timer = 0
-        
-        # UI
-        self.setup_ui()
-        
-        # Отладочная информация о столкновениях
-        self.collision_info = "Нет столкновений"
-        self.collision_count = 0
-        
-        # Настройка ввода
-        self.setup_input()
-        
-        # Запуск игрового цикла
-        Clock.schedule_interval(self.update, 1.0 / 60.0)
-    
-    def create_maze(self):
-        """Создание простого лабиринта для двух этажей"""
-        maze_size = 10
-        cell_size = 4
-        wall_height = 3
-        
-        # Первый этаж - больше стен
-        maze_layout_first = [
-            [1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,1,1,1,0,1],
-            [1,0,0,0,0,0,0,1,0,1],
-            [1,0,1,1,1,1,0,0,0,1],
-            [1,1,1,1,1,1,1,1,1,1]
-        ]
-        
-        # Второй этаж - другой лабиринт
-        maze_layout_second = [
-            [1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,0,1,0,0,0,0,0,0,1],
-            [1,0,1,0,0,0,0,0,0,1],
-            [1,0,1,0,0,0,0,0,0,1],
-            [1,0,1,0,0,0,0,0,0,1],
-            [1,0,1,1,1,1,1,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
-            [1,1,1,1,1,1,1,1,1,1]
-        ]
-        
-        for x in range(maze_size):
-            for z in range(maze_size):
-                if maze_layout_first[x][z] == 1:
-                    wall_x = (x - maze_size/2) * cell_size
-                    wall_z = (z - maze_size/2) * cell_size
-                    wall = Wall(wall_x, 0, wall_z, cell_size, cell_size, wall_height)
-                    self.walls_first_floor.append(wall)
-        
-        for x in range(maze_size):
-            for z in range(maze_size):
-                if maze_layout_second[x][z] == 1:
-                    wall_x = (x - maze_size/2) * cell_size
-                    wall_z = (z - maze_size/2) * cell_size
-                    wall = Wall(wall_x, self.floor_height, wall_z, cell_size, cell_size, wall_height)
-                    self.walls_second_floor.append(wall)
-        
-        # Добавляем несколько случайных стен для тестирования коллизий
-        for _ in range(5):
-            wall = Wall(
-                random.uniform(-15, 15),
-                0,
-                random.uniform(-15, 15),
-                random.uniform(2, 4),
-                random.uniform(2, 4),
-                wall_height
+        # Диагональ в дюймах (приблизительно)
+        if Window.dpi > 0:
+            metrics['diagonal_inches'] = math.sqrt(
+                (Window.width/Window.dpi)**2 + (Window.height/Window.dpi)**2
             )
-            self.walls_first_floor.append(wall)
+        else:
+            metrics['diagonal_inches'] = 0
         
-        print(f"Создано стен: 1 этаж - {len(self.walls_first_floor)}, 2 этаж - {len(self.walls_second_floor)}")
+        return metrics
+
+class GameSettings:
+    """Класс для управления настройками игры"""
     
-    def create_floors(self):
-        """Создание полов для двух этажей"""
-        self.floor_lines = []
-        size = 25
-        step = 2
-        
-        for i in range(-size, size + 1, step):
-            self.floor_lines.append((
-                Vector3(-size, 0, i),
-                Vector3(size, 0, i)
-            ))
-            self.floor_lines.append((
-                Vector3(i, 0, -size),
-                Vector3(i, 0, size)
-            ))
-        
-        for i in range(-size, size + 1, step):
-            self.floor_lines.append((
-                Vector3(-size, self.floor_height, i),
-                Vector3(size, self.floor_height, i)
-            ))
-            self.floor_lines.append((
-                Vector3(i, self.floor_height, -size),
-                Vector3(i, self.floor_height, size)
-            ))
+    def __init__(self):
+        self.settings_file = 'game_settings.json'
+        self.default_settings = {
+            'sound_volume': 0.8,
+            'music_volume': 0.6,
+            'vibration': True,
+            'joystick_size': 0.8,
+            'difficulty': 'medium',  # easy, medium, hard
+            'show_tutorial': True,
+            'graphics_quality': 'medium',  # low, medium, high
+            'control_sensitivity': 0.7
+        }
+        self.current_settings = self.load_settings()
+    
+    def load_settings(self):
+        """Загрузка настроек из файла"""
+        try:
+            if os.path.exists(self.settings_file):
+                with open(self.settings_file, 'r') as f:
+                    loaded_settings = json.load(f)
+                    # Объединяем с дефолтными настройками
+                    for key in self.default_settings:
+                        if key not in loaded_settings:
+                            loaded_settings[key] = self.default_settings[key]
+                    return loaded_settings
+        except:
+            pass
+        return self.default_settings.copy()
+    
+    def save_settings(self):
+        """Сохранение настроек в файл"""
+        try:
+            with open(self.settings_file, 'w') as f:
+                json.dump(self.current_settings, f, indent=2)
+            return True
+        except:
+            return False
+    
+    def get_setting(self, key):
+        """Получение значения настройки"""
+        return self.current_settings.get(key, self.default_settings.get(key))
+    
+    def set_setting(self, key, value):
+        """Установка значения настройки"""
+        self.current_settings[key] = value
+        self.save_settings()
+
+class AnimatedButton(Button):
+    """Анимированная кнопка с эффектами"""
+    
+    def __init__(self, **kwargs):
+        super(AnimatedButton, self).__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+        self.bind(on_press=self.on_button_press)
+        self.bind(on_release=self.on_button_release)
+    
+    def on_button_press(self, instance):
+        """Анимация при нажатии"""
+        # Анимация изменения цвета при нажатии
+        anim = Animation(background_color=(0.1, 0.4, 0.6, 1), duration=0.1)
+        anim.start(self)
+    
+    def on_button_release(self, instance):
+        """Анимация при отпускании"""
+        # Возвращаем исходный цвет
+        anim = Animation(background_color=(0.2, 0.6, 0.8, 1), duration=0.1)
+        anim.start(self)
+
+class MenuButton(AnimatedButton):
+    """Специальная кнопка для меню"""
+    
+    def __init__(self, **kwargs):
+        super(MenuButton, self).__init__(**kwargs)
+        self.font_size = dp(24)
+        self.size_hint = (0.6, 0.1)
+        self.pos_hint = {'center_x': 0.5}
+        self.background_color = (0.2, 0.6, 0.8, 1)
+        self.color = (1, 1, 1, 1)
+
+class MainMenuScreen(Screen):
+    """Главное меню игры"""
+    
+    def __init__(self, **kwargs):
+        super(MainMenuScreen, self).__init__(**kwargs)
+        self.name = 'main_menu'
+        self.setup_ui()
     
     def setup_ui(self):
-        """Настройка интерфейса"""
-        from kivy.uix.label import Label
+        """Настройка пользовательского интерфейса"""
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(20))
         
-        self.fps_label = Label(
-            text='FPS: 0',
-            font_size='14sp',
-            color=(1, 1, 1, 1),
-            pos_hint={'right': 0.98, 'top': 0.98},
-            size_hint=(None, None),
-            size=(100, 30)
+        # Заголовок игры
+        title_label = Label(
+            text='КРАСНЫЙ КВАДРАТ',
+            font_size=dp(48),
+            bold=True,
+            color=(1, 0.2, 0.2, 1),
+            size_hint=(1, 0.3)
         )
-        self.add_widget(self.fps_label)
+        layout.add_widget(title_label)
         
-        self.instructions = Label(
-            text='WASD: Движение | Мышка: Вращение | ПРОБЕЛ: ПРЫЖОК | Shift: Бег | На лестнице: W/S | ESC: Выход',
-            font_size='14sp',
-            color=(0.8, 0.8, 0.8, 0.8),
-            pos_hint={'center_x': 0.5, 'y': 0.02},
-            size_hint=(None, None),
-            size=(700, 30)
+        # Версия игры
+        version_label = Label(
+            text='Версия 1.0',
+            font_size=dp(16),
+            color=(0.5, 0.5, 0.5, 1),
+            size_hint=(1, 0.1)
         )
-        self.add_widget(self.instructions)
+        layout.add_widget(version_label)
         
-        self.pos_label = Label(
-            text='X: 0 Y: 1.8 Z: 0 Этаж: 1',
-            font_size='14sp',
-            color=(0.6, 0.8, 1.0, 0.8),
-            pos_hint={'x': 0.02, 'y': 0.02},
-            size_hint=(None, None),
-            size=(250, 30)
-        )
-        self.add_widget(self.pos_label)
+        # Кнопки меню
+        buttons_layout = BoxLayout(orientation='vertical', spacing=dp(15), size_hint=(1, 0.6))
         
-        self.state_label = Label(
-            text='На земле',
-            font_size='14sp',
-            color=(0.8, 1.0, 0.6, 0.8),
-            pos_hint={'x': 0.02, 'y': 0.06},
-            size_hint=(None, None),
-            size=(200, 30)
-        )
-        self.add_widget(self.state_label)
+        play_button = MenuButton(text='ИГРАТЬ')
+        play_button.bind(on_press=self.start_game)
+        buttons_layout.add_widget(play_button)
         
-        self.jump_label = Label(
-            text='Прыжков: 0/2',
-            font_size='14sp',
-            color=(1.0, 0.8, 0.6, 0.8),
-            pos_hint={'right': 0.98, 'y': 0.06},
-            size_hint=(None, None),
-            size=(150, 30)
-        )
-        self.add_widget(self.jump_label)
+        settings_button = MenuButton(text='НАСТРОЙКИ')
+        settings_button.bind(on_press=self.open_settings)
+        buttons_layout.add_widget(settings_button)
         
-        self.collision_label = Label(
-            text='Столкновений: 0',
-            font_size='12sp',
-            color=(1.0, 0.6, 0.6, 0.8),
-            pos_hint={'right': 0.98, 'y': 0.1},
-            size_hint=(None, None),
-            size=(150, 30)
-        )
-        self.add_widget(self.collision_label)
+        stats_button = MenuButton(text='СТАТИСТИКА')
+        stats_button.bind(on_press=self.show_stats)
+        buttons_layout.add_widget(stats_button)
         
-        self.debug_label = Label(
-            text='DEBUG: Коллизии активны',
-            font_size='12sp',
-            color=(0.6, 1.0, 0.6, 0.8),
-            pos_hint={'x': 0.02, 'top': 0.98},
-            size_hint=(None, None),
-            size=(300, 30)
-        )
-        self.add_widget(self.debug_label)
+        help_button = MenuButton(text='ПОМОЩЬ')
+        help_button.bind(on_press=self.show_help)
+        buttons_layout.add_widget(help_button)
+        
+        exit_button = MenuButton(text='ВЫХОД')
+        exit_button.bind(on_press=self.exit_game)
+        buttons_layout.add_widget(exit_button)
+        
+        layout.add_widget(buttons_layout)
+        
+        self.add_widget(layout)
     
-    def setup_input(self):
-        """Настройка ввода"""
-        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-        self._keyboard.bind(on_key_down=self._on_keyboard_down)
-        self._keyboard.bind(on_key_up=self._on_keyboard_up)
+    def start_game(self, instance):
+        """Запуск игры"""
+        self.manager.current = 'game'
+        self.manager.get_screen('game').start_new_game()
+    
+    def open_settings(self, instance):
+        """Открытие настроек"""
+        self.manager.current = 'settings'
+    
+    def show_stats(self, instance):
+        """Показать статистику"""
+        self.manager.current = 'stats'
+    
+    def show_help(self, instance):
+        """Показать помощь"""
+        self.manager.current = 'help'
+    
+    def exit_game(self, instance):
+        """Выход из игры"""
+        App.get_running_app().stop()
+
+class SettingsScreen(Screen):
+    """Экран настроек"""
+    
+    def __init__(self, **kwargs):
+        super(SettingsScreen, self).__init__(**kwargs)
+        self.name = 'settings'
+        self.settings = GameSettings()
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Настройка пользовательского интерфейса"""
+        main_layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
         
-        Window.bind(mouse_pos=self._on_mouse_move)
-        Window.show_cursor = False
+        # Заголовок
+        title_label = Label(
+            text='НАСТРОЙКИ',
+            font_size=dp(36),
+            bold=True,
+            color=(0.2, 0.6, 0.8, 1),
+            size_hint=(1, 0.2)
+        )
+        main_layout.add_widget(title_label)
+        
+        # Скроллируемая область для настроек
+        from kivy.uix.scrollview import ScrollView
+        scroll_view = ScrollView(size_hint=(1, 0.7))
+        
+        settings_layout = BoxLayout(orientation='vertical', spacing=dp(15), size_hint_y=None)
+        settings_layout.bind(minimum_height=settings_layout.setter('height'))
+        
+        # Громкость звука
+        sound_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(50))
+        sound_label = Label(text='Громкость звука:', size_hint=(0.5, 1))
+        sound_slider = Slider(min=0, max=1, value=self.settings.get_setting('sound_volume'), size_hint=(0.5, 1))
+        sound_slider.bind(value=self.on_sound_volume_change)
+        sound_layout.add_widget(sound_label)
+        sound_layout.add_widget(sound_slider)
+        settings_layout.add_widget(sound_layout)
+        
+        # Громкость музыки
+        music_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(50))
+        music_label = Label(text='Громкость музыки:', size_hint=(0.5, 1))
+        music_slider = Slider(min=0, max=1, value=self.settings.get_setting('music_volume'), size_hint=(0.5, 1))
+        music_slider.bind(value=self.on_music_volume_change)
+        music_layout.add_widget(music_label)
+        music_layout.add_widget(music_slider)
+        settings_layout.add_widget(music_layout)
+        
+        # Вибрация
+        vibro_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(50))
+        vibro_label = Label(text='Вибрация:', size_hint=(0.5, 1))
+        vibro_switch = Switch(active=self.settings.get_setting('vibration'), size_hint=(0.5, 1))
+        vibro_switch.bind(active=self.on_vibration_change)
+        vibro_layout.add_widget(vibro_label)
+        vibro_layout.add_widget(vibro_switch)
+        settings_layout.add_widget(vibro_layout)
+        
+        # Чувствительность управления
+        sens_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(50))
+        sens_label = Label(text='Чувствительность:', size_hint=(0.5, 1))
+        sens_slider = Slider(min=0.1, max=1.5, value=self.settings.get_setting('control_sensitivity'), size_hint=(0.5, 1))
+        sens_slider.bind(value=self.on_sensitivity_change)
+        sens_layout.add_widget(sens_label)
+        sens_layout.add_widget(sens_slider)
+        settings_layout.add_widget(sens_layout)
+        
+        scroll_view.add_widget(settings_layout)
+        main_layout.add_widget(scroll_view)
+        
+        # Кнопки
+        buttons_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint=(1, 0.1))
+        
+        back_button = MenuButton(text='НАЗАД')
+        back_button.size_hint = (0.4, 1)
+        back_button.bind(on_press=self.go_back)
+        buttons_layout.add_widget(back_button)
+        
+        reset_button = MenuButton(text='СБРОС')
+        reset_button.size_hint = (0.4, 1)
+        reset_button.bind(on_press=self.reset_settings)
+        buttons_layout.add_widget(reset_button)
+        
+        main_layout.add_widget(buttons_layout)
+        
+        self.add_widget(main_layout)
+    
+    def on_sound_volume_change(self, instance, value):
+        self.settings.set_setting('sound_volume', value)
+    
+    def on_music_volume_change(self, instance, value):
+        self.settings.set_setting('music_volume', value)
+    
+    def on_vibration_change(self, instance, value):
+        self.settings.set_setting('vibration', value)
+    
+    def on_difficulty_change(self, instance, value):
+        self.settings.set_setting('difficulty', value)
+    
+    def on_sensitivity_change(self, instance, value):
+        self.settings.set_setting('control_sensitivity', value)
+    
+    def reset_settings(self, instance):
+        """Сброс настроек к значениям по умолчанию"""
+        self.settings.current_settings = self.settings.default_settings.copy()
+        self.settings.save_settings()
+        self.manager.current = 'main_menu'
+        self.manager.current = 'settings'  # Перезагружаем экран
+    
+    def go_back(self, instance):
+        self.manager.current = 'main_menu'
+
+class StatsScreen(Screen):
+    """Экран статистики"""
+    
+    def __init__(self, **kwargs):
+        super(StatsScreen, self).__init__(**kwargs)
+        self.name = 'stats'
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Настройка пользовательского интерфейса"""
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(20))
+        
+        # Заголовок
+        title_label = Label(
+            text='СТАТИСТИКА',
+            font_size=dp(36),
+            bold=True,
+            color=(0.2, 0.6, 0.8, 1),
+            size_hint=(1, 0.2)
+        )
+        layout.add_widget(title_label)
+        
+        # Статистика
+        from kivy.uix.gridlayout import GridLayout
+        stats_grid = GridLayout(cols=2, spacing=dp(10), size_hint=(1, 0.6))
+        
+        stats_data = [
+            ('Игр сыграно:', '15'),
+            ('Рекорд:', '1250 очков'),
+            ('Время игры:', '2ч 30м'),
+            ('Препятствий пройдено:', '342'),
+            ('Столкновений:', '87'),
+            ('Уровень:', '5')
+        ]
+        
+        for stat_name, stat_value in stats_data:
+            name_label = Label(text=stat_name, font_size=dp(20), halign='right')
+            value_label = Label(text=stat_value, font_size=dp(20), bold=True, color=(1, 0.2, 0.2, 1))
+            stats_grid.add_widget(name_label)
+            stats_grid.add_widget(value_label)
+        
+        layout.add_widget(stats_grid)
+        
+        # Кнопка назад
+        back_button = MenuButton(text='НАЗАД')
+        back_button.bind(on_press=self.go_back)
+        layout.add_widget(back_button)
+        
+        self.add_widget(layout)
+    
+    def go_back(self, instance):
+        self.manager.current = 'main_menu'
+
+class HelpScreen(Screen):
+    """Экран помощи"""
+    
+    def __init__(self, **kwargs):
+        super(HelpScreen, self).__init__(**kwargs)
+        self.name = 'help'
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Настройка пользовательского интерфейса"""
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(20))
+        
+        # Заголовок
+        title_label = Label(
+            text='ПОМОЩЬ',
+            font_size=dp(36),
+            bold=True,
+            color=(0.2, 0.6, 0.8, 1),
+            size_hint=(1, 0.2)
+        )
+        layout.add_widget(title_label)
+        
+        # Текст помощи
+        from kivy.uix.scrollview import ScrollView
+        scroll_view = ScrollView(size_hint=(1, 0.7))
+        
+        help_text = """
+        УПРАВЛЕНИЕ:
+        
+        • Мобильные устройства:
+          Используйте джойстик в левом нижнем углу
+          для управления красным квадратом.
+        
+        • Компьютер:
+          Используйте клавиши WASD или стрелки
+          для управления.
+          R - сброс позиции квадрата
+        
+        ЦЕЛЬ ИГРЫ:
+        
+        Управляйте красным квадратом по экрану,
+        избегая столкновений с границами экрана.
+        
+        ПОДСКАЗКИ:
+        
+        • Используйте плавные движения для
+          лучшего контроля.
+        
+        • Экспериментируйте с разными способами
+          управления.
+        """
+        
+        help_label = Label(
+            text=help_text,
+            font_size=dp(18),
+            halign='left',
+            valign='top',
+            text_size=(Window.width - dp(40), None),
+            size_hint_y=None
+        )
+        help_label.bind(texture_size=help_label.setter('size'))
+        
+        scroll_view.add_widget(help_label)
+        layout.add_widget(scroll_view)
+        
+        # Кнопка назад
+        back_button = MenuButton(text='НАЗАД')
+        back_button.bind(on_press=self.go_back)
+        layout.add_widget(back_button)
+        
+        self.add_widget(layout)
+    
+    def go_back(self, instance):
+        self.manager.current = 'main_menu'
+
+class AdaptiveFloorTexture(InstructionGroup):
+    """Адаптивная текстура пола"""
+    def __init__(self, width, height, **kwargs):
+        super(AdaptiveFloorTexture, self).__init__()
+        
+        self.width = width
+        self.height = height
+        self.metrics = SmartScreenDetector.get_screen_metrics()
+        
+        # Адаптивный размер ячейки
+        min_side = min(width, height)
+        if self.metrics['is_phone']:
+            self.cell_size = max(int(dp(30)), int(min_side // 25))
+        elif self.metrics['is_tablet']:
+            self.cell_size = max(int(dp(40)), int(min_side // 20))
+        else:
+            self.cell_size = max(int(dp(50)), int(min_side // 15))
+        
+        self.create_texture()
+    
+    def create_texture(self):
+        """Создание адаптивной текстуры"""
+        # Основной фон
+        if self.metrics['is_mobile']:
+            self.add(Color(0.92, 0.92, 0.95, 1))
+        else:
+            self.add(Color(0.88, 0.88, 0.92, 1))
+        
+        self.add(Rectangle(pos=(0, 0), size=(self.width, self.height)))
+        
+        # Адаптивная сетка
+        self.create_grid()
+    
+    def create_grid(self):
+        """Создание адаптивной сетки"""
+        # Основная сетка
+        grid_alpha = 0.2 if self.metrics['is_mobile'] else 0.3
+        
+        self.add(Color(0.75, 0.75, 0.8, grid_alpha))
+        line_width = 1 if self.metrics['is_phone'] else 1.5
+        
+        # Используем целочисленный cell_size для range
+        cell_size_int = int(self.cell_size)
+        
+        # Вертикальные линии
+        for x in range(0, int(self.width) + 1, cell_size_int):
+            self.add(Line(points=[x, 0, x, self.height], width=line_width))
+        
+        # Горизонтальные линии
+        for y in range(0, int(self.height) + 1, cell_size_int):
+            self.add(Line(points=[0, y, self.width, y], width=line_width))
+        
+        # Вспомогательная сетка (мелкая) только для больших экранов
+        if not self.metrics['is_phone'] and self.cell_size > dp(40):
+            self.add(Color(0.8, 0.8, 0.85, grid_alpha * 0.5))
+            small_cell = int(self.cell_size // 2)
+            
+            for x in range(0, int(self.width) + 1, small_cell):
+                self.add(Line(points=[x, 0, x, self.height], width=0.5))
+            
+            for y in range(0, int(self.height) + 1, small_cell):
+                self.add(Line(points=[0, y, self.width, y], width=0.5))
+    
+    def update_size(self, width, height):
+        """Обновление размера текстуры"""
+        self.width = width
+        self.height = height
+        self.metrics = SmartScreenDetector.get_screen_metrics()
+        
+        # Пересчитываем размер ячейки
+        min_side = min(width, height)
+        if self.metrics['is_phone']:
+            self.cell_size = max(int(dp(30)), int(min_side // 25))
+        elif self.metrics['is_tablet']:
+            self.cell_size = max(int(dp(40)), int(min_side // 20))
+        else:
+            self.cell_size = max(int(dp(50)), int(min_side // 15))
+
+class AdaptiveMovingSquare(Widget):
+    """Адаптивный движущийся квадрат"""
+    pos_x = NumericProperty(0)
+    pos_y = NumericProperty(0)
+    square_size = NumericProperty(0)  # Изменено с size на square_size
+    current_speed_x = NumericProperty(0)
+    current_speed_y = NumericProperty(0)
+    max_speed = NumericProperty(0)
+    acceleration = NumericProperty(0)
+    deceleration = NumericProperty(0)
+    target_direction_x = NumericProperty(0)
+    target_direction_y = NumericProperty(0)
+    
+    def __init__(self, screen_width, screen_height, **kwargs):
+        super(AdaptiveMovingSquare, self).__init__(**kwargs)
+        
+        self.metrics = SmartScreenDetector.get_screen_metrics()
+        self.original_screen_width = screen_width
+        self.original_screen_height = screen_height
+        self.adaptive_setup(screen_width, screen_height)
+        self.init_graphics()
+    
+    def adaptive_setup(self, screen_width, screen_height):
+        """Адаптивная настройка параметров"""
+        min_side = min(screen_width, screen_height)
+        
+        # Адаптивный размер
+        if self.metrics['is_phone']:
+            self.square_size = min_side * 0.1  # 10% для телефонов
+            self.max_speed = min_side * 0.4
+        elif self.metrics['is_tablet']:
+            self.square_size = min_side * 0.08  # 8% для планшетов
+            self.max_speed = min_side * 0.35
+        else:
+            self.square_size = min_side * 0.06  # 6% для десктопов
+            self.max_speed = min_side * 0.3
+        
+        # Адаптивное ускорение
+        self.acceleration = self.max_speed * (1.5 if self.metrics['is_mobile'] else 2.0)
+        self.deceleration = self.max_speed * (2.0 if self.metrics['is_mobile'] else 2.5)
+        
+        # Начальная позиция (относительно экрана)
+        self.pos_x = (screen_width - self.square_size) / 2
+        self.pos_y = (screen_height - self.square_size) / 2
+    
+    def init_graphics(self):
+        """Инициализация графики с адаптивными параметрами"""
+        with self.canvas:
+            # Основной квадрат
+            Color(1, 0.2, 0.2, 1)  # Красный цвет
+            self.rect = Rectangle(pos=(self.pos_x, self.pos_y), size=(self.square_size, self.square_size))
+    
+    def update_position(self, dt, screen_width, screen_height):
+        """Обновление позиции с адаптивной логикой"""
+        # Плавное изменение скорости
+        self.apply_smooth_acceleration(dt)
+        
+        # Обновляем позицию
+        self.pos_x += self.current_speed_x * dt
+        self.pos_y += self.current_speed_y * dt
+        
+        # Адаптивные границы с отскоком
+        self.handle_bounds(screen_width, screen_height)
+        
+        # Замедление при отсутствии ввода
+        if abs(self.target_direction_x) < 0.1 and abs(self.target_direction_y) < 0.1:
+            self.apply_friction(dt)
+        
+        # Обновляем графику
+        self.rect.pos = (self.pos_x, self.pos_y)
+    
+    def handle_bounds(self, screen_width, screen_height):
+        """Обработка границ экрана"""
+        bounce_factor = 0.3 if self.metrics['is_mobile'] else 0.4
+        
+        if self.pos_x < 0:
+            self.pos_x = 0
+            self.current_speed_x = -self.current_speed_x * bounce_factor
+        elif self.pos_x > screen_width - self.square_size:
+            self.pos_x = screen_width - self.square_size
+            self.current_speed_x = -self.current_speed_x * bounce_factor
+            
+        if self.pos_y < 0:
+            self.pos_y = 0
+            self.current_speed_y = -self.current_speed_y * bounce_factor
+        elif self.pos_y > screen_height - self.square_size:
+            self.pos_y = screen_height - self.square_size
+            self.current_speed_y = -self.current_speed_y * bounce_factor
+    
+    def apply_smooth_acceleration(self, dt):
+        """Плавное ускорение"""
+        target_speed_x = self.target_direction_x * self.max_speed
+        target_speed_y = self.target_direction_y * self.max_speed
+        
+        speed_diff_x = target_speed_x - self.current_speed_x
+        speed_diff_y = target_speed_y - self.current_speed_y
+        
+        # Адаптивная скорость изменения
+        change_rate = self.acceleration * dt * (1.2 if self.metrics['is_desktop'] else 1.0)
+        
+        if abs(speed_diff_x) > 0.1:
+            self.current_speed_x += math.copysign(
+                min(abs(speed_diff_x), change_rate), 
+                speed_diff_x
+            )
+        else:
+            self.current_speed_x = target_speed_x
+        
+        if abs(speed_diff_y) > 0.1:
+            self.current_speed_y += math.copysign(
+                min(abs(speed_diff_y), change_rate), 
+                speed_diff_y
+            )
+        else:
+            self.current_speed_y = target_speed_y
+    
+    def apply_friction(self, dt):
+        """Плавное замедление"""
+        # Адаптивный коэффициент трения
+        if self.metrics['is_mobile']:
+            friction_base = 0.92
+        else:
+            friction_base = 0.88
+        
+        friction_factor = friction_base ** (dt * 60)
+        
+        self.current_speed_x *= friction_factor
+        self.current_speed_y *= friction_factor
+        
+        # Порог остановки
+        stop_threshold = 3 if self.metrics['is_mobile'] else 5
+        if abs(self.current_speed_x) < stop_threshold:
+            self.current_speed_x = 0
+        if abs(self.current_speed_y) < stop_threshold:
+            self.current_speed_y = 0
+    
+    def set_target_direction(self, dx, dy):
+        """Установка целевого направления"""
+        length = math.sqrt(dx * dx + dy * dy)
+        if length > 0:
+            normalized_length = min(length, 1.0)
+            # Адаптивная чувствительность
+            power = 0.6 if self.metrics['is_mobile'] else 0.7
+            sensitivity = normalized_length ** power
+            
+            self.target_direction_x = (dx / length) * sensitivity
+            self.target_direction_y = (dy / length) * sensitivity
+        else:
+            self.target_direction_x = 0
+            self.target_direction_y = 0
+    
+    def reset_position(self, screen_width, screen_height):
+        """Сброс позиции"""
+        # Плавное перемещение к центру вместо телепортации
+        self.target_direction_x = 0
+        self.target_direction_y = 0
+        self.current_speed_x = 0
+        self.current_speed_y = 0
+        # Возвращаем квадрат в центр
+        self.pos_x = (screen_width - self.square_size) / 2
+        self.pos_y = (screen_height - self.square_size) / 2
+
+class GameScreen(Screen):
+    """Игровой экран"""
+    
+    square = ObjectProperty(None)
+    screen_width = NumericProperty(0)
+    screen_height = NumericProperty(0)
+    joystick_active = BooleanProperty(False)
+    joystick_pos = ObjectProperty((0, 0))
+    joystick_center = ObjectProperty((0, 0))
+    joystick_radius = NumericProperty(0)
+    floor_texture = ObjectProperty(None)
+    joystick_smoothing = NumericProperty(0.8)
+    game_active = BooleanProperty(False)
+    pause_button = ObjectProperty(None)
+    
+    def __init__(self, **kwargs):
+        super(GameScreen, self).__init__(**kwargs)
+        self.name = 'game'
+        self.game_active = False
+        self.clock_event = None
+        
+        # Получаем метрики устройства
+        self.metrics = SmartScreenDetector.get_screen_metrics()
+        
+        # Инициализация размеров
+        self.screen_width = Window.width
+        self.screen_height = Window.height
+        
+        # Создаем интерфейс
+        self.create_interface()
+        
+        # Настройка управления
+        self.setup_controls()
+        
+        # Отслеживаем изменение размера
+        Window.bind(on_resize=self.on_window_resize)
+    
+    def create_interface(self):
+        """Создание адаптивного интерфейса"""
+        # Фон
+        with self.canvas.before:
+            Color(0.9, 0.9, 0.93, 1)
+            self.bg_rect = Rectangle(pos=(0, 0), size=(self.screen_width, self.screen_height))
+        
+        # Текстура пола
+        with self.canvas.before:
+            self.floor_texture = AdaptiveFloorTexture(self.screen_width, self.screen_height)
+            self.canvas.before.add(self.floor_texture)
+        
+        # Создаем квадрат игрока
+        self.square = AdaptiveMovingSquare(self.screen_width, self.screen_height)
+        
+        # Добавляем квадрат на экран
+        self.add_widget(self.square)
+        
+        # Джойстик
+        self.init_joystick()
+        self.draw_joystick()
+        
+        # Панель управления сверху
+        self.create_top_panel()
+    
+    def create_top_panel(self):
+        """Создание верхней панели с кнопками"""
+        from kivy.uix.boxlayout import BoxLayout
+        
+        top_panel = BoxLayout(orientation='horizontal', size_hint=(1, None), height=dp(50))
+        top_panel.pos = (0, self.screen_height - dp(50))
+        
+        # Кнопка меню
+        menu_button = Button(
+            text='МЕНЮ',
+            size_hint=(0.5, 1),
+            background_color=(0.2, 0.6, 0.8, 1),
+            color=(1, 1, 1, 1)
+        )
+        menu_button.bind(on_press=self.return_to_menu)
+        top_panel.add_widget(menu_button)
+        
+        # Кнопка сброса
+        self.pause_button = Button(
+            text='СБРОС',
+            size_hint=(0.5, 1),
+            background_color=(1, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.pause_button.bind(on_press=self.reset_game)
+        top_panel.add_widget(self.pause_button)
+        
+        self.add_widget(top_panel)
+    
+    def init_joystick(self):
+        """Инициализация адаптивного джойстика"""
+        min_side = min(self.screen_width, self.screen_height)
+        
+        # Адаптивный размер джойстика
+        if self.metrics['is_phone']:
+            self.joystick_radius = min_side * 0.12
+            joystick_margin = self.joystick_radius * 1.6
+        elif self.metrics['is_tablet']:
+            self.joystick_radius = min_side * 0.1
+            joystick_margin = self.joystick_radius * 1.8
+        else:
+            self.joystick_radius = min_side * 0.08
+            joystick_margin = self.joystick_radius * 2.0
+        
+        # Позиция джойстика
+        self.joystick_center = (joystick_margin, joystick_margin)
+        self.joystick_pos = self.joystick_center
+        
+        # Адаптивное сглаживание
+        if self.metrics['is_mobile']:
+            self.joystick_smoothing = 0.7  # Быстрее реагирует на мобильных
+        else:
+            self.joystick_smoothing = 0.8
+    
+    def draw_joystick(self):
+        """Отрисовка адаптивного джойстика"""
+        with self.canvas:
+            # Внутренний круг джойстика (без тени)
+            inner_size = 0.6
+            Color(0.4, 0.4, 0.5, 0.5)
+            
+            # Вычисляем позицию и размер
+            pos_x = self.joystick_pos[0] - self.joystick_radius * inner_size
+            pos_y = self.joystick_pos[1] - self.joystick_radius * inner_size
+            size = self.joystick_radius * (inner_size * 2)
+            
+            self.joystick_circle = Ellipse(
+                pos=(pos_x, pos_y),
+                size=(size, size)
+            )
+    
+    def setup_controls(self):
+        """Настройка управления"""
+        if not self.metrics['is_mobile']:
+            self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+            self._keyboard.bind(on_key_down=self._on_keyboard_down)
+            self._keyboard.bind(on_key_up=self._on_keyboard_up)
+    
+    def start_new_game(self):
+        """Начать новую игру"""
+        self.game_active = True
+        self.square.reset_position(self.screen_width, self.screen_height)
+        
+        # Запуск игрового цикла
+        if self.clock_event:
+            self.clock_event.cancel()
+        self.clock_event = Clock.schedule_interval(self.update_game, 1.0/60.0)
+    
+    def update_game(self, dt):
+        """Обновление игры"""
+        if not self.game_active:
+            return
+        
+        # Обновляем позицию квадрата
+        self.square.update_position(dt, self.screen_width, self.screen_height)
+        
+        # Управление джойстиком
+        if self.joystick_active:
+            dx = self.joystick_pos[0] - self.joystick_center[0]
+            dy = self.joystick_pos[1] - self.joystick_center[1]
+            
+            distance = math.sqrt(dx * dx + dy * dy)
+            dead_zone = self.joystick_radius * (0.15 if self.metrics['is_mobile'] else 0.1)
+            
+            if distance > dead_zone:
+                normalized_distance = min(distance / self.joystick_radius, 1.0)
+                # Адаптивная кривая управления
+                power = 1.3 if self.metrics['is_mobile'] else 1.5
+                control_factor = normalized_distance ** power
+                
+                self.square.set_target_direction(
+                    dx * control_factor,
+                    dy * control_factor
+                )
+            else:
+                self.square.set_target_direction(0, 0)
+        else:
+            self.square.set_target_direction(0, 0)
+        
+        # Обновление джойстика
+        self.update_joystick_drawing()
+    
+    def update_joystick_drawing(self):
+        """Обновление отрисовки джойстика"""
+        inner_size = 0.6
+        target_pos = (
+            self.joystick_pos[0] - self.joystick_radius * inner_size,
+            self.joystick_pos[1] - self.joystick_radius * inner_size
+        )
+        
+        current_pos = self.joystick_circle.pos
+        smooth_pos = (
+            current_pos[0] * self.joystick_smoothing + target_pos[0] * (1 - self.joystick_smoothing),
+            current_pos[1] * self.joystick_smoothing + target_pos[1] * (1 - self.joystick_smoothing)
+        )
+        
+        self.joystick_circle.pos = smooth_pos
+    
+    def on_window_resize(self, window, width, height):
+        """Обработка изменения размера окна"""
+        self.screen_width = width
+        self.screen_height = height
+        self.metrics = SmartScreenDetector.get_screen_metrics()
+        
+        # Обновляем фон
+        self.bg_rect.size = (width, height)
+        
+        # Обновляем текстуру пола
+        self.canvas.before.remove(self.floor_texture)
+        self.floor_texture = AdaptiveFloorTexture(width, height)
+        self.canvas.before.add(self.floor_texture)
+        
+        # Обновляем квадрат
+        self.square.adaptive_setup(width, height)
+        
+        # Обновляем джойстик
+        self.init_joystick()
+        
+        # Перерисовываем графику джойстика
+        if hasattr(self, 'joystick_circle'):
+            self.canvas.remove(self.joystick_circle)
+        self.draw_joystick()
+        
+        # Обновляем позицию верхней панели
+        for child in self.children:
+            if hasattr(child, 'pos'):
+                if child.pos[1] == self.screen_height - dp(50):
+                    child.pos = (0, height - dp(50))
     
     def _keyboard_closed(self):
-        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
-        self._keyboard.unbind(on_key_up=self._on_keyboard_up)
-        self._keyboard = None
+        if hasattr(self, '_keyboard'):
+            self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+            self._keyboard.unbind(on_key_up=self._on_keyboard_up)
+            self._keyboard = None
     
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        key = keycode[1].lower()
+        key = keycode[1]
         
-        if key == 'escape':
-            App.get_running_app().stop()
-        elif key == 'space':
-            # НАЖИМАЕМ ПРОБЕЛ - СРАЗУ ПРЫГАЕМ!
-            if not self.camera.on_stairs and self.camera.jump_count < self.camera.max_jumps:
-                self.camera.jump()
-                self.space_pressed = True
-        elif key in ['w', 'a', 's', 'd', 'shift', 'left', 'right', 'up', 'down']:
-            self.keys_pressed.add(key)
+        # Адаптивная скорость для клавиатуры
+        speed = 0.8 if self.metrics['device_type'] == 'desktop_large' else 0.7
+        
+        if key in ('w', 'up'):
+            self.square.target_direction_y = speed
+        elif key in ('s', 'down'):
+            self.square.target_direction_y = -speed
+        elif key in ('a', 'left'):
+            self.square.target_direction_x = -speed
+        elif key in ('d', 'right'):
+            self.square.target_direction_x = speed
+        elif key == 'r':
+            self.reset_game()
+        elif key == 'escape':
+            self.return_to_menu()
         
         return True
     
     def _on_keyboard_up(self, keyboard, keycode):
-        key = keycode[1].lower()
-        if key in self.keys_pressed:
-            self.keys_pressed.remove(key)
+        key = keycode[1]
         
-        if key == 'space':
-            self.space_pressed = False
+        if key in ('w', 'up', 's', 'down'):
+            self.square.target_direction_y = 0
+        elif key in ('a', 'left', 'd', 'right'):
+            self.square.target_direction_x = 0
         
         return True
     
-    def _on_mouse_move(self, window, pos):
-        if self.last_mouse_pos:
-            dx = pos[0] - self.last_mouse_pos[0]
-            dy = pos[1] - self.last_mouse_pos[1]
-            
-            self.camera.look(dx, -dy)
+    def on_touch_down(self, touch):
+        touch_x, touch_y = touch.pos
         
-        self.last_mouse_pos = pos
-    
-    def check_stair_collision(self):
-        """Проверяет столкновение с лестницей"""
-        if self.staircase.is_player_near(self.camera.position):
-            # Если игрок достаточно близко к лестнице, он может по ней двигаться
-            self.camera.on_stairs = True
+        # Проверка джойстика
+        dx = touch_x - self.joystick_center[0]
+        dy = touch_y - self.joystick_center[1]
+        distance_to_joystick = math.sqrt(dx * dx + dy * dy)
+        
+        # Адаптивная зона касания джойстика
+        touch_radius = self.joystick_radius * (1.8 if self.metrics['is_mobile'] else 1.5)
+        
+        if distance_to_joystick <= touch_radius:
+            self.joystick_active = True
+            self.joystick_pos = touch.pos
+            touch.ud['is_joystick'] = True
             return True
         
-        self.camera.on_stairs = False
-        return False
+        return super(GameScreen, self).on_touch_down(touch)
     
-    def check_collisions_debug(self):
-        """Отладочная проверка столкновений"""
-        self.collision_count = 0
-        walls = self.walls_first_floor if self.current_floor == 1 else self.walls_second_floor
+    def on_touch_up(self, touch):
+        if 'is_joystick' in touch.ud:
+            self.joystick_active = False
+            self.joystick_pos = self.joystick_center
+            return True
         
-        for wall in walls:
-            if wall.is_player_colliding(self.camera.position, self.camera.radius, self.camera.height):
-                self.collision_count += 1
-        
-        self.collision_label.text = f'Столкновений: {self.collision_count}'
+        return super(GameScreen, self).on_touch_up(touch)
     
-    def update(self, dt):
-        """Игровой цикл"""
-        # Счетчик FPS
-        self.frame_count += 1
-        self.fps_timer += dt
-        if self.fps_timer >= 1.0:
-            self.fps = self.frame_count
-            self.frame_count = 0
-            self.fps_timer = 0
-            self.fps_label.text = f'FPS: {self.fps}'
-        
-        # Определяем текущий этаж
-        if self.camera.position.y < self.floor_height + 1.0:
-            self.current_floor = 1
-            floor_y = 0
-            current_walls = self.walls_first_floor
-        else:
-            self.current_floor = 2
-            floor_y = self.floor_height
-            current_walls = self.walls_second_floor
-        
-        # Проверяем столкновение с лестницей
-        on_stairs = self.check_stair_collision()
-        
-        # Определяем направление движения
-        move_x = 0
-        move_z = 0
-        stair_move = 0
-        
-        if 'w' in self.keys_pressed:
-            if on_stairs:
-                stair_move += 1
-            else:
-                move_z += 1
-        if 's' in self.keys_pressed:
-            if on_stairs:
-                stair_move -= 1
-            else:
-                move_z -= 1
-        if 'a' in self.keys_pressed and not on_stairs:
-            move_x -= 1
-        if 'd' in self.keys_pressed and not on_stairs:
-            move_x += 1
-        
-        # Движение по лестнице
-        if on_stairs and stair_move != 0:
-            self.camera.move_on_stairs(stair_move, dt)
-        
-        # Применяем движение
-        if not on_stairs and (move_x != 0 or move_z != 0):
-            self.camera.move(move_x, move_z, dt, on_stairs)
-        
-        # Бег
-        if 'shift' in self.keys_pressed and not on_stairs:
-            self.camera.run(True)
-        else:
-            self.camera.run(False)
-        
-        # ПРЫЖОК УЖЕ ОБРАБОТАН В _on_keyboard_down - моментальный прыжок при нажатии!
-        
-        # Обновление физики камеры С УЧЕТОМ СТОЛКНОВЕНИЙ СО СТЕНАМИ
-        self.camera.update_physics(dt, current_walls, floor_y)
-        
-        # Проверяем столкновения для отладки
-        self.check_collisions_debug()
-        
-        # Поворот камеры
-        if 'left' in self.keys_pressed:
-            self.camera.rotate_with_keys(-1, 0)
-        if 'right' in self.keys_pressed:
-            self.camera.rotate_with_keys(1, 0)
-        if 'up' in self.keys_pressed:
-            self.camera.rotate_with_keys(0, 1)
-        if 'down' in self.keys_pressed:
-            self.camera.rotate_with_keys(0, -1)
-        
-        # Обновление UI
-        cam = self.camera.position
-        floor_text = f'Этаж: {self.current_floor}'
-        self.pos_label.text = f'X: {cam.x:.1f} Y: {cam.y:.1f} Z: {cam.z:.1f} {floor_text}'
-        
-        # Отображаем состояние
-        if on_stairs:
-            self.state_label.text = 'На лестнице'
-        elif self.camera.grounded:
-            speed = math.sqrt(self.camera.velocity.x**2 + self.camera.velocity.z**2)
-            if speed > 5:
-                self.state_label.text = 'Бежит'
-            elif speed > 0.1:
-                self.state_label.text = 'Идет'
-            else:
-                self.state_label.text = 'Стоит'
-        else:
-            vertical_speed = self.camera.velocity.y
-            if vertical_speed > 0:
-                self.state_label.text = 'Прыжок ↑'
-            else:
-                self.state_label.text = 'Падение ↓'
-        
-        # Отображаем состояние прыжка
-        self.jump_label.text = f'Прыжков: {self.camera.jump_count}/{self.camera.max_jumps}'
-        
-        # Отрисовка
-        self.draw()
-    
-    def draw(self):
-        """Отрисовка сцены"""
-        self.canvas.clear()
-        
-        with self.canvas:
-            # Темный фон
-            Color(0.05, 0.05, 0.05, 1)
-            Rectangle(pos=(0, 0), size=(self.width, self.height))
+    def on_touch_move(self, touch):
+        if 'is_joystick' in touch.ud:
+            touch_x, touch_y = touch.pos
             
-            # Рисуем пол первого этажа
-            Color(0.3, 0.3, 0.3, 1)
-            ground_size = 50
-            ground_vertices = [
-                Vector3(-ground_size, 0, -ground_size),
-                Vector3(ground_size, 0, -ground_size),
-                Vector3(ground_size, 0, ground_size),
-                Vector3(-ground_size, 0, ground_size)
-            ]
+            dx = touch_x - self.joystick_center[0]
+            dy = touch_y - self.joystick_center[1]
+            distance = math.sqrt(dx * dx + dy * dy)
             
-            proj_ground = []
-            for v in ground_vertices:
-                proj = self.project_to_screen(v, self.camera)
-                if proj[2] > 0.1:
-                    proj_ground.append((proj[0], proj[1]))
-            
-            if len(proj_ground) >= 4:
-                Mesh(
-                    vertices=[
-                        proj_ground[0][0], proj_ground[0][1], 0, 0,
-                        proj_ground[1][0], proj_ground[1][1], 0, 0,
-                        proj_ground[2][0], proj_ground[2][1], 0, 0,
-                        proj_ground[3][0], proj_ground[3][1], 0, 0
-                    ],
-                    indices=[0, 1, 2, 0, 2, 3],
-                    mode='triangles'
+            if distance > self.joystick_radius:
+                scale = self.joystick_radius / distance
+                self.joystick_pos = (
+                    self.joystick_center[0] + dx * scale,
+                    self.joystick_center[1] + dy * scale
                 )
-            
-            # Рисуем пол второго этажа
-            Color(0.35, 0.35, 0.35, 1)
-            second_floor_vertices = [
-                Vector3(-ground_size, self.floor_height, -ground_size),
-                Vector3(ground_size, self.floor_height, -ground_size),
-                Vector3(ground_size, self.floor_height, ground_size),
-                Vector3(-ground_size, self.floor_height, ground_size)
-            ]
-            
-            proj_second_floor = []
-            for v in second_floor_vertices:
-                proj = self.project_to_screen(v, self.camera)
-                if proj[2] > 0.1:
-                    proj_second_floor.append((proj[0], proj[1]))
-            
-            if len(proj_second_floor) >= 4:
-                Mesh(
-                    vertices=[
-                        proj_second_floor[0][0], proj_second_floor[0][1], 0, 0,
-                        proj_second_floor[1][0], proj_second_floor[1][1], 0, 0,
-                        proj_second_floor[2][0], proj_second_floor[2][1], 0, 0,
-                        proj_second_floor[3][0], proj_second_floor[3][1], 0, 0
-                    ],
-                    indices=[0, 1, 2, 0, 2, 3],
-                    mode='triangles'
-                )
-            
-            # Рисуем сетку пола
-            Color(0.4, 0.4, 0.4, 0.5)
-            for line in self.floor_lines:
-                p1 = line[0]
-                p2 = line[1]
-                
-                proj1 = self.project_to_screen(p1, self.camera)
-                proj2 = self.project_to_screen(p2, self.camera)
-                
-                if proj1[2] > 0.1 and proj2[2] > 0.1:
-                    Line(points=[proj1[0], proj1[1], proj2[0], proj2[1]], width=1)
-            
-            # Рисуем стены первого этажа
-            for wall in self.walls_first_floor:
-                self.draw_wall(wall, self.camera)
-            
-            # Рисуем стены второго этажа
-            for wall in self.walls_second_floor:
-                self.draw_wall(wall, self.camera)
-            
-            # Рисуем лестницу
-            self.draw_staircase(self.staircase, self.camera)
-            
-            # Отладочная отрисовка коллизий игрока
-            if self.collision_count > 0:
-                Color(1.0, 0.2, 0.2, 0.3)
-                player_bb = self.camera.get_bounding_box()
-                self.draw_bounding_box(player_bb, self.camera)
-    
-    def draw_bounding_box(self, bbox, camera):
-        """Отрисовка ограничивающей рамки для отладки"""
-        vertices = [
-            Vector3(bbox.min.x, bbox.min.y, bbox.min.z),
-            Vector3(bbox.max.x, bbox.min.y, bbox.min.z),
-            Vector3(bbox.max.x, bbox.min.y, bbox.max.z),
-            Vector3(bbox.min.x, bbox.min.y, bbox.max.z),
-            Vector3(bbox.min.x, bbox.max.y, bbox.min.z),
-            Vector3(bbox.max.x, bbox.max.y, bbox.min.z),
-            Vector3(bbox.max.x, bbox.max.y, bbox.max.z),
-            Vector3(bbox.min.x, bbox.max.y, bbox.max.z)
-        ]
-        
-        # Проектируем вершины
-        proj_vertices = []
-        for v in vertices:
-            proj = self.project_to_screen(v, camera)
-            if proj[2] > 0.1:
-                proj_vertices.append((proj[0], proj[1]))
             else:
-                return
+                self.joystick_pos = touch.pos
+            
+            return True
         
-        if len(proj_vertices) < 8:
-            return
-        
-        # Рисуем линии рамки
-        edges = [
-            (0,1), (1,2), (2,3), (3,0),  # нижний квадрат
-            (4,5), (5,6), (6,7), (7,4),  # верхний квадрат
-            (0,4), (1,5), (2,6), (3,7)   # вертикальные линии
-        ]
-        
-        for edge in edges:
-            Line(points=[
-                proj_vertices[edge[0]][0], proj_vertices[edge[0]][1],
-                proj_vertices[edge[1]][0], proj_vertices[edge[1]][1]
-            ], width=1.5)
+        return super(GameScreen, self).on_touch_move(touch)
     
-    def draw_staircase(self, staircase, camera):
-        """Отрисовка лестницы"""
-        with self.canvas:
-            steps_vertices = staircase.get_steps_vertices()
-            
-            for step_idx, vertices in enumerate(steps_vertices):
-                step_color = (
-                    staircase.color[0] * (1 - step_idx/staircase.steps * 0.3),
-                    staircase.color[1] * (1 - step_idx/staircase.steps * 0.3),
-                    staircase.color[2],
-                    staircase.color[3]
-                )
-                
-                Color(*step_color)
-                
-                faces = [
-                    [vertices[4], vertices[5], vertices[6], vertices[7]],
-                    [vertices[4], vertices[5], vertices[1], vertices[0]],
-                    [vertices[5], vertices[1], vertices[2], vertices[6]],
-                    [vertices[4], vertices[0], vertices[3], vertices[7]]
-                ]
-                
-                for face in faces:
-                    proj_vertices = []
-                    all_behind = False
-                    
-                    for v in face:
-                        proj = self.project_to_screen(v, camera)
-                        if proj[2] <= 0.1:
-                            all_behind = True
-                            break
-                        proj_vertices.append((proj[0], proj[1]))
-                    
-                    if all_behind or len(proj_vertices) < 4:
-                        continue
-                    
-                    Mesh(
-                        vertices=[
-                            proj_vertices[0][0], proj_vertices[0][1], 0, 0,
-                            proj_vertices[1][0], proj_vertices[1][1], 0, 0,
-                            proj_vertices[2][0], proj_vertices[2][1], 0, 0,
-                            proj_vertices[3][0], proj_vertices[3][1], 0, 0
-                        ],
-                        indices=[0, 1, 2, 0, 2, 3],
-                        mode='triangles'
-                    )
+    def reset_game(self, instance=None):
+        """Сброс игры"""
+        self.square.reset_position(self.screen_width, self.screen_height)
+        self.game_active = True
     
-    def draw_wall(self, wall, camera):
-        """Отрисовка стены лабиринта"""
-        with self.canvas:
-            faces = wall.get_faces()
-            face_colors = [
-                (0.6, 0.6, 0.6, 1),
-                (0.5, 0.5, 0.5, 1),
-                (0.7, 0.7, 0.7, 1),
-                (0.7, 0.7, 0.7, 1),
-                (0.8, 0.8, 0.8, 1),
-                (0.4, 0.4, 0.4, 1),
-            ]
-            
-            faces_to_draw = []
-            
-            for i, face in enumerate(faces):
-                vertices_2d = []
-                avg_z = 0
-                all_behind = False
-                
-                for v in face:
-                    proj = self.project_to_screen(v, camera)
-                    if proj[2] <= 0.1:
-                        all_behind = True
-                        break
-                    vertices_2d.append((proj[0], proj[1]))
-                    avg_z += proj[2]
-                
-                if all_behind:
-                    continue
-                
-                avg_z /= 4
-                
-                faces_to_draw.append({
-                    'vertices': vertices_2d,
-                    'color': face_colors[i],
-                    'z': avg_z
-                })
-            
-            faces_to_draw.sort(key=lambda f: f['z'], reverse=True)
-            
-            for face in faces_to_draw:
-                Color(*face['color'])
-                
-                if len(face['vertices']) >= 4:
-                    Mesh(
-                        vertices=[
-                            face['vertices'][0][0], face['vertices'][0][1], 0, 0,
-                            face['vertices'][1][0], face['vertices'][1][1], 0, 0,
-                            face['vertices'][2][0], face['vertices'][2][1], 0, 0,
-                            face['vertices'][3][0], face['vertices'][3][1], 0, 0
-                        ],
-                        indices=[0, 1, 2, 0, 2, 3],
-                        mode='triangles'
-                    )
-            
-            # Отладочная отрисовка коллизий стен (только при столкновениях)
-            if self.collision_count > 0:
-                # Проверяем, сталкивается ли игрок с этой стеной
-                if wall.is_player_colliding(self.camera.position, self.camera.radius, self.camera.height):
-                    Color(1.0, 0.0, 0.0, 0.3)
-                    wall_bb = wall.get_bounding_box()
-                    self.draw_bounding_box(wall_bb, camera)
-    
-    def project_to_screen(self, point, camera):
-        """Проекция 3D точки на экран"""
-        dx = point.x - camera.position.x
-        dy = point.y - camera.position.y
-        dz = point.z - camera.position.z
-        
-        cos_y = math.cos(-camera.rotation.y)
-        sin_y = math.sin(-camera.rotation.y)
-        cos_x = math.cos(-camera.rotation.x)
-        sin_x = math.sin(-camera.rotation.x)
-        
-        x = dx * cos_y + dz * sin_y
-        z = -dx * sin_y + dz * cos_y
-        
-        y = dy * cos_x - z * sin_x
-        z = dy * sin_x + z * cos_x
-        
-        if z > 0.1:
-            factor = 500 / z
-            screen_x = x * factor + self.width / 2
-            screen_y = y * factor + self.height / 2
-        else:
-            screen_x = x * 5000 + self.width / 2
-            screen_y = y * 5000 + self.height / 2
-        
-        return (screen_x, screen_y, z)
+    def return_to_menu(self, instance=None):
+        """Возврат в главное меню"""
+        self.game_active = False
+        if self.clock_event:
+            self.clock_event.cancel()
+        self.manager.current = 'main_menu'
 
-class TwoFloorMazeApp(App):
+class UniversalRedSquareGame(App):
+    """Универсальное приложение для всех устройств"""
+    
     def build(self):
-        self.title = "Двухэтажный 3D Лабиринт с ФИЗИКОЙ СТЕН - ПРОБЕЛ = ПРЫЖОК!"
-        return Game3D()
+        # Автоматическая настройка окна
+        self.configure_window()
+        
+        # Создаем менеджер экранов
+        sm = ScreenManager()
+        
+        # Добавляем экраны
+        sm.add_widget(MainMenuScreen())
+        sm.add_widget(SettingsScreen())
+        sm.add_widget(StatsScreen())
+        sm.add_widget(HelpScreen())
+        sm.add_widget(GameScreen())
+        
+        return sm
+    
+    def configure_window(self):
+        """Автоматическая настройка окна в зависимости от устройства"""
+        metrics = SmartScreenDetector.get_screen_metrics()
+        
+        if metrics['is_mobile']:
+            # Для мобильных - полноэкранный режим
+            from kivy.config import Config
+            Config.set('graphics', 'fullscreen', 'auto')
+            
+            # Отключаем мультитач если это не планшет
+            if not metrics['is_tablet']:
+                Config.set('input', 'multitouchscreen1', '')
+        else:
+            # Для десктопов - адаптивное окно
+            if metrics['device_type'] == 'desktop_large':
+                Window.size = (1200, 800)
+            elif metrics['device_type'] == 'desktop_medium':
+                Window.size = (1024, 768)
+            else:
+                Window.size = (800, 600)
+            
+            # Разрешаем изменение размера
+            Window.borderless = False
+            Window.resizable = True
 
 if __name__ == '__main__':
-    TwoFloorMazeApp().run()
+    UniversalRedSquareGame().run()
