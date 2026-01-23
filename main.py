@@ -12,6 +12,7 @@ from kivy.properties import NumericProperty, ObjectProperty, BooleanProperty, St
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle, Ellipse, Line, InstructionGroup
+from kivy.graphics import Translate, PushMatrix, PopMatrix
 from kivy.utils import platform
 from kivy.metrics import dp
 from kivy.animation import Animation
@@ -89,7 +90,9 @@ class GameSettings:
             'difficulty': 'medium',  # easy, medium, hard
             'show_tutorial': True,
             'graphics_quality': 'medium',  # low, medium, high
-            'control_sensitivity': 0.7
+            'control_sensitivity': 0.7,
+            'camera_smoothing': 0.9,
+            'camera_follow_speed': 0.1
         }
         self.current_settings = self.load_settings()
     
@@ -99,7 +102,7 @@ class GameSettings:
             if os.path.exists(self.settings_file):
                 with open(self.settings_file, 'r') as f:
                     loaded_settings = json.load(f)
-                    # Объединяем с дефолтными настройками
+                    # Объединяем с дефолтными настройки
                     for key in self.default_settings:
                         if key not in loaded_settings:
                             loaded_settings[key] = self.default_settings[key]
@@ -158,6 +161,26 @@ class MenuButton(AnimatedButton):
         self.pos_hint = {'center_x': 0.5}
         self.background_color = (0.2, 0.6, 0.8, 1)
         self.color = (1, 1, 1, 1)
+
+class GameMenuButton(Button):
+    """Кнопка меню для игрового экрана"""
+    
+    def __init__(self, **kwargs):
+        super(GameMenuButton, self).__init__(**kwargs)
+        self.font_size = dp(18)
+        self.size_hint = (None, None)
+        self.size = (dp(100), dp(40))
+        self.background_color = (0.2, 0.6, 0.8, 1)
+        self.color = (1, 1, 1, 1)
+        self.background_normal = ''
+        
+    def on_press(self):
+        """Анимация при нажатии"""
+        self.background_color = (0.1, 0.4, 0.6, 1)
+    
+    def on_release(self):
+        """Анимация при отпускании"""
+        self.background_color = (0.2, 0.6, 0.8, 1)
 
 class MainMenuScreen(Screen):
     """Главное меню игры"""
@@ -304,6 +327,24 @@ class SettingsScreen(Screen):
         sens_layout.add_widget(sens_slider)
         settings_layout.add_widget(sens_layout)
         
+        # Плавность камеры
+        camera_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(50))
+        camera_label = Label(text='Плавность камеры:', size_hint=(0.5, 1))
+        camera_slider = Slider(min=0.5, max=0.99, value=self.settings.get_setting('camera_smoothing'), size_hint=(0.5, 1))
+        camera_slider.bind(value=self.on_camera_smoothing_change)
+        camera_layout.add_widget(camera_label)
+        camera_layout.add_widget(camera_slider)
+        settings_layout.add_widget(camera_layout)
+        
+        # Скорость следования камеры
+        camera_speed_layout = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(50))
+        camera_speed_label = Label(text='Скорость камеры:', size_hint=(0.5, 1))
+        camera_speed_slider = Slider(min=0.01, max=0.5, value=self.settings.get_setting('camera_follow_speed'), size_hint=(0.5, 1))
+        camera_speed_slider.bind(value=self.on_camera_speed_change)
+        camera_speed_layout.add_widget(camera_speed_label)
+        camera_speed_layout.add_widget(camera_speed_slider)
+        settings_layout.add_widget(camera_speed_layout)
+        
         scroll_view.add_widget(settings_layout)
         main_layout.add_widget(scroll_view)
         
@@ -338,6 +379,12 @@ class SettingsScreen(Screen):
     
     def on_sensitivity_change(self, instance, value):
         self.settings.set_setting('control_sensitivity', value)
+    
+    def on_camera_smoothing_change(self, instance, value):
+        self.settings.set_setting('camera_smoothing', value)
+    
+    def on_camera_speed_change(self, instance, value):
+        self.settings.set_setting('camera_follow_speed', value)
     
     def reset_settings(self, instance):
         """Сброс настроек к значениям по умолчанию"""
@@ -439,19 +486,25 @@ class HelpScreen(Screen):
           Используйте клавиши WASD или стрелки
           для управления.
           R - сброс позиции квадрата
+          C - центрировать камеру
         
         ЦЕЛЬ ИГРЫ:
         
-        Управляйте красным квадратом по экрану,
-        избегая столкновений с границами экрана.
+        Управляйте красным квадратом по карте,
+        избегая столкновений с границами и препятствиями.
+        
+        КАРТА:
+        
+        • Зеленые зоны - безопасные области
+        • Красные границы - непроходимые стены
+        • Синие препятствия - избегайте их
         
         ПОДСКАЗКИ:
         
         • Используйте плавные движения для
           лучшего контроля.
         
-        • Экспериментируйте с разными способами
-          управления.
+        • Изучайте карту перед началом движения.
         """
         
         help_label = Label(
@@ -477,89 +530,275 @@ class HelpScreen(Screen):
     def go_back(self, instance):
         self.manager.current = 'main_menu'
 
-class AdaptiveFloorTexture(InstructionGroup):
-    """Адаптивная текстура пола"""
-    def __init__(self, width, height, **kwargs):
-        super(AdaptiveFloorTexture, self).__init__()
-        
-        self.width = width
-        self.height = height
-        self.metrics = SmartScreenDetector.get_screen_metrics()
-        
-        # Адаптивный размер ячейки
-        min_side = min(width, height)
-        if self.metrics['is_phone']:
-            self.cell_size = max(int(dp(30)), int(min_side // 25))
-        elif self.metrics['is_tablet']:
-            self.cell_size = max(int(dp(40)), int(min_side // 20))
-        else:
-            self.cell_size = max(int(dp(50)), int(min_side // 15))
-        
-        self.create_texture()
+class GameWorld(Widget):
+    """Игровой мир с картой и границами"""
     
-    def create_texture(self):
-        """Создание адаптивной текстуры"""
+    def __init__(self, **kwargs):
+        super(GameWorld, self).__init__(**kwargs)
+        
+        # Размер карты
+        self.world_width = Window.width * 5
+        self.world_height = Window.height * 5
+        
+        # Границы карты (отступ от краев)
+        self.border_thickness = dp(30)
+        self.border_left = self.border_thickness
+        self.border_right = self.world_width - self.border_thickness
+        self.border_top = self.world_height - self.border_thickness
+        self.border_bottom = self.border_thickness
+        
+        # Создаем мир
+        with self.canvas.before:
+            PushMatrix()
+            self.translate = Translate(0, 0)
+            
+            # Фон карты
+            self.create_background()
+            
+            # Границы карты
+            self.create_borders()
+            
+            # Препятствия
+            self.create_obstacles()
+            
+            # Зоны интереса
+            self.create_zones()
+            
+        with self.canvas.after:
+            PopMatrix()
+    
+    def create_background(self):
+        """Создание фона карты"""
         # Основной фон
-        if self.metrics['is_mobile']:
-            self.add(Color(0.92, 0.92, 0.95, 1))
-        else:
-            self.add(Color(0.88, 0.88, 0.92, 1))
+        Color(0.85, 0.9, 0.95, 1)
+        self.bg_rect = Rectangle(pos=(0, 0), size=(self.world_width, self.world_height))
         
-        self.add(Rectangle(pos=(0, 0), size=(self.width, self.height)))
-        
-        # Адаптивная сетка
-        self.create_grid()
-    
-    def create_grid(self):
-        """Создание адаптивной сетки"""
-        # Основная сетка
-        grid_alpha = 0.2 if self.metrics['is_mobile'] else 0.3
-        
-        self.add(Color(0.75, 0.75, 0.8, grid_alpha))
-        line_width = 1 if self.metrics['is_phone'] else 1.5
-        
-        # Используем целочисленный cell_size для range
-        cell_size_int = int(self.cell_size)
+        # Сетка для карты
+        cell_size = dp(100)
+        grid_alpha = 0.15
         
         # Вертикальные линии
-        for x in range(0, int(self.width) + 1, cell_size_int):
-            self.add(Line(points=[x, 0, x, self.height], width=line_width))
+        for x in range(0, int(self.world_width) + 1, int(cell_size)):
+            Color(0.4, 0.5, 0.6, grid_alpha)
+            Line(points=[x, 0, x, self.world_height], width=1)
         
         # Горизонтальные линии
-        for y in range(0, int(self.height) + 1, cell_size_int):
-            self.add(Line(points=[0, y, self.width, y], width=line_width))
-        
-        # Вспомогательная сетка (мелкая) только для больших экранов
-        if not self.metrics['is_phone'] and self.cell_size > dp(40):
-            self.add(Color(0.8, 0.8, 0.85, grid_alpha * 0.5))
-            small_cell = int(self.cell_size // 2)
-            
-            for x in range(0, int(self.width) + 1, small_cell):
-                self.add(Line(points=[x, 0, x, self.height], width=0.5))
-            
-            for y in range(0, int(self.height) + 1, small_cell):
-                self.add(Line(points=[0, y, self.width, y], width=0.5))
+        for y in range(0, int(self.world_height) + 1, int(cell_size)):
+            Color(0.4, 0.5, 0.6, grid_alpha)
+            Line(points=[0, y, self.world_width, y], width=1)
     
-    def update_size(self, width, height):
-        """Обновление размера текстуры"""
-        self.width = width
-        self.height = height
-        self.metrics = SmartScreenDetector.get_screen_metrics()
+    def create_borders(self):
+        """Создание границ карты"""
+        border_alpha = 0.8
         
-        # Пересчитываем размер ячейки
-        min_side = min(width, height)
-        if self.metrics['is_phone']:
-            self.cell_size = max(int(dp(30)), int(min_side // 25))
-        elif self.metrics['is_tablet']:
-            self.cell_size = max(int(dp(40)), int(min_side // 20))
-        else:
-            self.cell_size = max(int(dp(50)), int(min_side // 15))
+        # Левая граница
+        Color(1, 0.3, 0.3, border_alpha)
+        Rectangle(
+            pos=(0, 0),
+            size=(self.border_thickness, self.world_height)
+        )
+        
+        # Правая граница
+        Rectangle(
+            pos=(self.world_width - self.border_thickness, 0),
+            size=(self.border_thickness, self.world_height)
+        )
+        
+        # Верхняя граница
+        Rectangle(
+            pos=(0, self.world_height - self.border_thickness),
+            size=(self.world_width, self.border_thickness)
+        )
+        
+        # Нижняя граница
+        Rectangle(
+            pos=(0, 0),
+            size=(self.world_width, self.border_thickness)
+        )
+        
+        # Визуальные маркеры углов
+        corner_size = dp(15)
+        Color(1, 0.2, 0.2, 1)
+        
+        # Левый нижний угол
+        Rectangle(
+            pos=(0, 0),
+            size=(corner_size, corner_size)
+        )
+        
+        # Правый нижний угол
+        Rectangle(
+            pos=(self.world_width - corner_size, 0),
+            size=(corner_size, corner_size)
+        )
+        
+        # Левый верхний угол
+        Rectangle(
+            pos=(0, self.world_height - corner_size),
+            size=(corner_size, corner_size)
+        )
+        
+        # Правый верхний угол
+        Rectangle(
+            pos=(self.world_width - corner_size, self.world_height - corner_size),
+            size=(corner_size, corner_size)
+        )
+    
+    def create_obstacles(self):
+        """Создание препятствий на карте"""
+        self.obstacles = []
+        
+        # Центральное препятствие
+        center_x = self.world_width / 2
+        center_y = self.world_height / 2
+        obstacle_size = dp(150)
+        
+        Color(0.2, 0.4, 0.8, 0.7)
+        obstacle = Rectangle(
+            pos=(center_x - obstacle_size/2, center_y - obstacle_size/2),
+            size=(obstacle_size, obstacle_size)
+        )
+        self.obstacles.append({
+            'rect': obstacle,
+            'pos': (center_x - obstacle_size/2, center_y - obstacle_size/2),
+            'size': (obstacle_size, obstacle_size)
+        })
+        
+        # Препятствия в углах
+        corner_obstacle_size = dp(100)
+        
+        # Левый верхний угол
+        Color(0.2, 0.4, 0.8, 0.7)
+        obstacle = Rectangle(
+            pos=(self.border_thickness * 3, self.world_height - self.border_thickness * 3 - corner_obstacle_size),
+            size=(corner_obstacle_size, corner_obstacle_size)
+        )
+        self.obstacles.append({
+            'rect': obstacle,
+            'pos': (self.border_thickness * 3, self.world_height - self.border_thickness * 3 - corner_obstacle_size),
+            'size': (corner_obstacle_size, corner_obstacle_size)
+        })
+        
+        # Правый нижний угол
+        Color(0.2, 0.4, 0.8, 0.7)
+        obstacle = Rectangle(
+            pos=(self.world_width - self.border_thickness * 3 - corner_obstacle_size, self.border_thickness * 3),
+            size=(corner_obstacle_size, corner_obstacle_size)
+        )
+        self.obstacles.append({
+            'rect': obstacle,
+            'pos': (self.world_width - self.border_thickness * 3 - corner_obstacle_size, self.border_thickness * 3),
+            'size': (corner_obstacle_size, corner_obstacle_size)
+        })
+        
+        # Препятствия по периметру
+        perimeter_obstacle_size = dp(80)
+        
+        # Верхний ряд
+        for i in range(3):
+            x = self.world_width * 0.25 * (i + 1) - perimeter_obstacle_size/2
+            y = self.world_height * 0.8
+            Color(0.2, 0.4, 0.8, 0.7)
+            obstacle = Rectangle(
+                pos=(x, y),
+                size=(perimeter_obstacle_size, perimeter_obstacle_size)
+            )
+            self.obstacles.append({
+                'rect': obstacle,
+                'pos': (x, y),
+                'size': (perimeter_obstacle_size, perimeter_obstacle_size)
+            })
+        
+        # Левый ряд
+        for i in range(2):
+            x = self.world_width * 0.1
+            y = self.world_height * 0.3 * (i + 1) - perimeter_obstacle_size/2
+            Color(0.2, 0.4, 0.8, 0.7)
+            obstacle = Rectangle(
+                pos=(x, y),
+                size=(perimeter_obstacle_size, perimeter_obstacle_size)
+            )
+            self.obstacles.append({
+                'rect': obstacle,
+                'pos': (x, y),
+                'size': (perimeter_obstacle_size, perimeter_obstacle_size)
+            })
+    
+    def create_zones(self):
+        """Создание специальных зон на карте"""
+        # Стартовая зона (зеленая)
+        start_zone_size = dp(200)
+        start_x = self.border_thickness * 2
+        start_y = self.border_thickness * 2
+        
+        Color(0.4, 0.8, 0.4, 0.3)
+        Rectangle(
+            pos=(start_x, start_y),
+            size=(start_zone_size, start_zone_size)
+        )
+        
+        # Текст "Старт"
+        with self.canvas:
+            Color(0.2, 0.6, 0.2, 0.8)
+            # Упрощенная версия - просто квадрат с надписью
+            Rectangle(
+                pos=(start_x + start_zone_size/4, start_y + start_zone_size/4),
+                size=(start_zone_size/2, start_zone_size/2)
+            )
+        
+        # Финишная зона (желтая)
+        finish_zone_size = dp(200)
+        finish_x = self.world_width - self.border_thickness * 2 - finish_zone_size
+        finish_y = self.world_height - self.border_thickness * 2 - finish_zone_size
+        
+        Color(1, 0.8, 0.2, 0.3)
+        Rectangle(
+            pos=(finish_x, finish_y),
+            size=(finish_zone_size, finish_zone_size)
+        )
+        
+        # Текст "Финиш"
+        with self.canvas:
+            Color(0.8, 0.6, 0.1, 0.8)
+            # Упрощенная версия - просто квадрат с надписью
+            Rectangle(
+                pos=(finish_x + finish_zone_size/4, finish_y + finish_zone_size/4),
+                size=(finish_zone_size/2, finish_zone_size/2)
+            )
+    
+    def check_collision(self, x, y, size):
+        """Проверка столкновения с границами и препятствиями"""
+        # Проверка границ
+        if (x < self.border_left or 
+            x + size > self.border_right or 
+            y < self.border_bottom or 
+            y + size > self.border_top):
+            return True
+        
+        # Проверка препятствий
+        for obstacle in self.obstacles:
+            obs_x, obs_y = obstacle['pos']
+            obs_w, obs_h = obstacle['size']
+            
+            # Простая проверка пересечения прямоугольников
+            if (x < obs_x + obs_w and
+                x + size > obs_x and
+                y < obs_y + obs_h and
+                y + size > obs_y):
+                return True
+        
+        return False
+    
+    def update_camera(self, camera_x, camera_y):
+        """Обновление позиции камеры"""
+        self.translate.x = -camera_x
+        self.translate.y = -camera_y
 
 class AdaptiveMovingSquare(Widget):
     """Адаптивный движущийся квадрат"""
     pos_x = NumericProperty(0)
     pos_y = NumericProperty(0)
-    square_size = NumericProperty(0)  # Изменено с size на square_size
+    square_size = NumericProperty(0)
     current_speed_x = NumericProperty(0)
     current_speed_y = NumericProperty(0)
     max_speed = NumericProperty(0)
@@ -568,37 +807,41 @@ class AdaptiveMovingSquare(Widget):
     target_direction_x = NumericProperty(0)
     target_direction_y = NumericProperty(0)
     
-    def __init__(self, screen_width, screen_height, **kwargs):
+    def __init__(self, game_world, **kwargs):
         super(AdaptiveMovingSquare, self).__init__(**kwargs)
         
         self.metrics = SmartScreenDetector.get_screen_metrics()
-        self.original_screen_width = screen_width
-        self.original_screen_height = screen_height
-        self.adaptive_setup(screen_width, screen_height)
+        self.game_world = game_world
+        self.world_width = game_world.world_width
+        self.world_height = game_world.world_height
+        
+        self.adaptive_setup()
         self.init_graphics()
     
-    def adaptive_setup(self, screen_width, screen_height):
+    def adaptive_setup(self):
         """Адаптивная настройка параметров"""
-        min_side = min(screen_width, screen_height)
+        min_side = min(Window.width, Window.height)
         
         # Адаптивный размер
         if self.metrics['is_phone']:
-            self.square_size = min_side * 0.1  # 10% для телефонов
-            self.max_speed = min_side * 0.4
-        elif self.metrics['is_tablet']:
-            self.square_size = min_side * 0.08  # 8% для планшетов
-            self.max_speed = min_side * 0.35
-        else:
-            self.square_size = min_side * 0.06  # 6% для десктопов
+            self.square_size = min_side * 0.08  # 8% для телефонов
             self.max_speed = min_side * 0.3
+        elif self.metrics['is_tablet']:
+            self.square_size = min_side * 0.06  # 6% для планшетов
+            self.max_speed = min_side * 0.25
+        else:
+            self.square_size = min_side * 0.05  # 5% для десктопов
+            self.max_speed = min_side * 0.2
         
         # Адаптивное ускорение
         self.acceleration = self.max_speed * (1.5 if self.metrics['is_mobile'] else 2.0)
         self.deceleration = self.max_speed * (2.0 if self.metrics['is_mobile'] else 2.5)
         
-        # Начальная позиция (относительно экрана)
-        self.pos_x = (screen_width - self.square_size) / 2
-        self.pos_y = (screen_height - self.square_size) / 2
+        # Начальная позиция (в стартовой зоне)
+        start_x = self.game_world.border_thickness * 2 + dp(50)
+        start_y = self.game_world.border_thickness * 2 + dp(50)
+        self.pos_x = start_x
+        self.pos_y = start_y
     
     def init_graphics(self):
         """Инициализация графики с адаптивными параметрами"""
@@ -607,17 +850,23 @@ class AdaptiveMovingSquare(Widget):
             Color(1, 0.2, 0.2, 1)  # Красный цвет
             self.rect = Rectangle(pos=(self.pos_x, self.pos_y), size=(self.square_size, self.square_size))
     
-    def update_position(self, dt, screen_width, screen_height):
-        """Обновление позиции с адаптивной логикой"""
+    def update_position(self, dt):
+        """Обновление позиции с проверкой столкновений"""
         # Плавное изменение скорости
         self.apply_smooth_acceleration(dt)
         
-        # Обновляем позицию
-        self.pos_x += self.current_speed_x * dt
-        self.pos_y += self.current_speed_y * dt
+        # Пробуем переместиться
+        new_x = self.pos_x + self.current_speed_x * dt
+        new_y = self.pos_y + self.current_speed_y * dt
         
-        # Адаптивные границы с отскоком
-        self.handle_bounds(screen_width, screen_height)
+        # Проверяем столкновения
+        if not self.game_world.check_collision(new_x, new_y, self.square_size):
+            # Если нет столкновения - перемещаемся
+            self.pos_x = new_x
+            self.pos_y = new_y
+        else:
+            # Столкновение - отскакиваем
+            self.handle_collision()
         
         # Замедление при отсутствии ввода
         if abs(self.target_direction_x) < 0.1 and abs(self.target_direction_y) < 0.1:
@@ -626,23 +875,17 @@ class AdaptiveMovingSquare(Widget):
         # Обновляем графику
         self.rect.pos = (self.pos_x, self.pos_y)
     
-    def handle_bounds(self, screen_width, screen_height):
-        """Обработка границ экрана"""
-        bounce_factor = 0.3 if self.metrics['is_mobile'] else 0.4
+    def handle_collision(self):
+        """Обработка столкновения"""
+        # Отскок от препятствий
+        bounce_factor = 0.5
         
-        if self.pos_x < 0:
-            self.pos_x = 0
-            self.current_speed_x = -self.current_speed_x * bounce_factor
-        elif self.pos_x > screen_width - self.square_size:
-            self.pos_x = screen_width - self.square_size
-            self.current_speed_x = -self.current_speed_x * bounce_factor
-            
-        if self.pos_y < 0:
-            self.pos_y = 0
-            self.current_speed_y = -self.current_speed_y * bounce_factor
-        elif self.pos_y > screen_height - self.square_size:
-            self.pos_y = screen_height - self.square_size
-            self.current_speed_y = -self.current_speed_y * bounce_factor
+        self.current_speed_x = -self.current_speed_x * bounce_factor
+        self.current_speed_y = -self.current_speed_y * bounce_factor
+        
+        # Немного отодвигаем от места столкновения
+        self.pos_x += self.current_speed_x * 0.1
+        self.pos_y += self.current_speed_y * 0.1
     
     def apply_smooth_acceleration(self, dt):
         """Плавное ускорение"""
@@ -706,31 +949,65 @@ class AdaptiveMovingSquare(Widget):
             self.target_direction_x = 0
             self.target_direction_y = 0
     
-    def reset_position(self, screen_width, screen_height):
-        """Сброс позиции"""
-        # Плавное перемещение к центру вместо телепортации
+    def reset_position(self):
+        """Сброс позиции в стартовую зону"""
+        # Плавное перемещение к старту
         self.target_direction_x = 0
         self.target_direction_y = 0
         self.current_speed_x = 0
         self.current_speed_y = 0
-        # Возвращаем квадрат в центр
-        self.pos_x = (screen_width - self.square_size) / 2
-        self.pos_y = (screen_height - self.square_size) / 2
+        
+        # Возвращаем квадрат в стартовую зону
+        start_x = self.game_world.border_thickness * 2 + dp(50)
+        start_y = self.game_world.border_thickness * 2 + dp(50)
+        self.pos_x = start_x
+        self.pos_y = start_y
+
+class SmoothCamera:
+    """Плавная камера, следующая за игроком"""
+    
+    def __init__(self, settings):
+        self.settings = settings
+        self.camera_x = 0
+        self.camera_y = 0
+        self.target_x = 0
+        self.target_y = 0
+        
+    def update(self, player_x, player_y, screen_width, screen_height):
+        """Обновление позиции камеры"""
+        # Цель камеры - позиция игрока в центре экрана
+        self.target_x = player_x - screen_width / 2
+        self.target_y = player_y - screen_height / 2
+        
+        # Плавное следование за игроком
+        follow_speed = self.settings.get_setting('camera_follow_speed')
+        
+        # Интерполяция для плавного движения
+        self.camera_x += (self.target_x - self.camera_x) * follow_speed
+        self.camera_y += (self.target_y - self.camera_y) * follow_speed
+        
+        return self.camera_x, self.camera_y
+    
+    def reset(self, player_x, player_y, screen_width, screen_height):
+        """Сброс камеры"""
+        self.camera_x = player_x - screen_width / 2
+        self.camera_y = player_y - screen_height / 2
+        self.target_x = self.camera_x
+        self.target_y = self.camera_y
 
 class GameScreen(Screen):
-    """Игровой экран"""
+    """Игровой экран с картой"""
     
-    square = ObjectProperty(None)
     screen_width = NumericProperty(0)
     screen_height = NumericProperty(0)
     joystick_active = BooleanProperty(False)
     joystick_pos = ObjectProperty((0, 0))
     joystick_center = ObjectProperty((0, 0))
     joystick_radius = NumericProperty(0)
-    floor_texture = ObjectProperty(None)
-    joystick_smoothing = NumericProperty(0.8)
     game_active = BooleanProperty(False)
-    pause_button = ObjectProperty(None)
+    menu_button = ObjectProperty(None)
+    camera_x = NumericProperty(0)
+    camera_y = NumericProperty(0)
     
     def __init__(self, **kwargs):
         super(GameScreen, self).__init__(**kwargs)
@@ -745,6 +1022,12 @@ class GameScreen(Screen):
         self.screen_width = Window.width
         self.screen_height = Window.height
         
+        # Настройки
+        self.settings = GameSettings()
+        
+        # Камера
+        self.camera = SmoothCamera(self.settings)
+        
         # Создаем интерфейс
         self.create_interface()
         
@@ -756,57 +1039,29 @@ class GameScreen(Screen):
     
     def create_interface(self):
         """Создание адаптивного интерфейса"""
-        # Фон
-        with self.canvas.before:
-            Color(0.9, 0.9, 0.93, 1)
-            self.bg_rect = Rectangle(pos=(0, 0), size=(self.screen_width, self.screen_height))
-        
-        # Текстура пола
-        with self.canvas.before:
-            self.floor_texture = AdaptiveFloorTexture(self.screen_width, self.screen_height)
-            self.canvas.before.add(self.floor_texture)
+        # Создаем игровой мир
+        self.game_world = GameWorld()
+        self.add_widget(self.game_world)
         
         # Создаем квадрат игрока
-        self.square = AdaptiveMovingSquare(self.screen_width, self.screen_height)
+        self.square = AdaptiveMovingSquare(self.game_world)
+        self.game_world.add_widget(self.square)
         
-        # Добавляем квадрат на экран
-        self.add_widget(self.square)
-        
-        # Джойстик
+        # Джойстик (рисуется отдельно)
         self.init_joystick()
+        
+        # Кнопка меню в верхнем правом углу
+        self.create_menu_button()
+        
+        # Отрисовываем джойстик
         self.draw_joystick()
-        
-        # Панель управления сверху
-        self.create_top_panel()
     
-    def create_top_panel(self):
-        """Создание верхней панели с кнопками"""
-        from kivy.uix.boxlayout import BoxLayout
-        
-        top_panel = BoxLayout(orientation='horizontal', size_hint=(1, None), height=dp(50))
-        top_panel.pos = (0, self.screen_height - dp(50))
-        
-        # Кнопка меню
-        menu_button = Button(
-            text='МЕНЮ',
-            size_hint=(0.5, 1),
-            background_color=(0.2, 0.6, 0.8, 1),
-            color=(1, 1, 1, 1)
-        )
-        menu_button.bind(on_press=self.return_to_menu)
-        top_panel.add_widget(menu_button)
-        
-        # Кнопка сброса
-        self.pause_button = Button(
-            text='СБРОС',
-            size_hint=(0.5, 1),
-            background_color=(1, 0.2, 0.2, 1),
-            color=(1, 1, 1, 1)
-        )
-        self.pause_button.bind(on_press=self.reset_game)
-        top_panel.add_widget(self.pause_button)
-        
-        self.add_widget(top_panel)
+    def create_menu_button(self):
+        """Создание кнопки меню в верхнем правом углу"""
+        self.menu_button = GameMenuButton(text='МЕНЮ')
+        self.menu_button.pos = (self.screen_width - dp(110), self.screen_height - dp(50))
+        self.menu_button.bind(on_press=self.return_to_menu)
+        self.add_widget(self.menu_button)
     
     def init_joystick(self):
         """Инициализация адаптивного джойстика"""
@@ -823,7 +1078,7 @@ class GameScreen(Screen):
             self.joystick_radius = min_side * 0.08
             joystick_margin = self.joystick_radius * 2.0
         
-        # Позиция джойстика
+        # Позиция джойстика (фиксированная относительно экрана)
         self.joystick_center = (joystick_margin, joystick_margin)
         self.joystick_pos = self.joystick_center
         
@@ -836,11 +1091,18 @@ class GameScreen(Screen):
     def draw_joystick(self):
         """Отрисовка адаптивного джойстика"""
         with self.canvas:
-            # Внутренний круг джойстика (без тени)
+            # Внешний круг джойстика
+            Color(0.4, 0.4, 0.5, 0.3)
+            Ellipse(
+                pos=(self.joystick_center[0] - self.joystick_radius,
+                     self.joystick_center[1] - self.joystick_radius),
+                size=(self.joystick_radius * 2, self.joystick_radius * 2)
+            )
+            
+            # Внутренний круг джойстика
             inner_size = 0.6
             Color(0.4, 0.4, 0.5, 0.5)
             
-            # Вычисляем позицию и размер
             pos_x = self.joystick_pos[0] - self.joystick_radius * inner_size
             pos_y = self.joystick_pos[1] - self.joystick_radius * inner_size
             size = self.joystick_radius * (inner_size * 2)
@@ -860,7 +1122,13 @@ class GameScreen(Screen):
     def start_new_game(self):
         """Начать новую игру"""
         self.game_active = True
-        self.square.reset_position(self.screen_width, self.screen_height)
+        self.square.reset_position()
+        self.camera.reset(
+            self.square.pos_x,
+            self.square.pos_y,
+            self.screen_width,
+            self.screen_height
+        )
         
         # Запуск игрового цикла
         if self.clock_event:
@@ -873,7 +1141,18 @@ class GameScreen(Screen):
             return
         
         # Обновляем позицию квадрата
-        self.square.update_position(dt, self.screen_width, self.screen_height)
+        self.square.update_position(dt)
+        
+        # Обновляем камеру
+        self.camera_x, self.camera_y = self.camera.update(
+            self.square.pos_x,
+            self.square.pos_y,
+            self.screen_width,
+            self.screen_height
+        )
+        
+        # Обновляем трансформацию камеры в игровом мире
+        self.game_world.update_camera(self.camera_x, self.camera_y)
         
         # Управление джойстиком
         if self.joystick_active:
@@ -923,30 +1202,17 @@ class GameScreen(Screen):
         self.screen_height = height
         self.metrics = SmartScreenDetector.get_screen_metrics()
         
-        # Обновляем фон
-        self.bg_rect.size = (width, height)
+        # Обновляем позицию кнопки меню
+        if self.menu_button:
+            self.menu_button.pos = (width - dp(110), height - dp(50))
         
-        # Обновляем текстуру пола
-        self.canvas.before.remove(self.floor_texture)
-        self.floor_texture = AdaptiveFloorTexture(width, height)
-        self.canvas.before.add(self.floor_texture)
-        
-        # Обновляем квадрат
-        self.square.adaptive_setup(width, height)
-        
-        # Обновляем джойстик
-        self.init_joystick()
-        
-        # Перерисовываем графику джойстика
-        if hasattr(self, 'joystick_circle'):
-            self.canvas.remove(self.joystick_circle)
-        self.draw_joystick()
-        
-        # Обновляем позицию верхней панели
-        for child in self.children:
-            if hasattr(child, 'pos'):
-                if child.pos[1] == self.screen_height - dp(50):
-                    child.pos = (0, height - dp(50))
+        # Обновляем позицию камеры
+        self.camera.reset(
+            self.square.pos_x,
+            self.square.pos_y,
+            width,
+            height
+        )
     
     def _keyboard_closed(self):
         if hasattr(self, '_keyboard'):
@@ -970,6 +1236,8 @@ class GameScreen(Screen):
             self.square.target_direction_x = speed
         elif key == 'r':
             self.reset_game()
+        elif key == 'c':
+            self.center_camera()
         elif key == 'escape':
             self.return_to_menu()
         
@@ -988,7 +1256,7 @@ class GameScreen(Screen):
     def on_touch_down(self, touch):
         touch_x, touch_y = touch.pos
         
-        # Проверка джойстика
+        # Проверка джойстика (фиксированная позиция на экране)
         dx = touch_x - self.joystick_center[0]
         dy = touch_y - self.joystick_center[1]
         distance_to_joystick = math.sqrt(dx * dx + dy * dy)
@@ -1035,8 +1303,23 @@ class GameScreen(Screen):
     
     def reset_game(self, instance=None):
         """Сброс игры"""
-        self.square.reset_position(self.screen_width, self.screen_height)
+        self.square.reset_position()
+        self.camera.reset(
+            self.square.pos_x,
+            self.square.pos_y,
+            self.screen_width,
+            self.screen_height
+        )
         self.game_active = True
+    
+    def center_camera(self):
+        """Центрировать камеру на игроке"""
+        self.camera.reset(
+            self.square.pos_x,
+            self.square.pos_y,
+            self.screen_width,
+            self.screen_height
+        )
     
     def return_to_menu(self, instance=None):
         """Возврат в главное меню"""
@@ -1071,7 +1354,7 @@ class UniversalRedSquareGame(App):
         if metrics['is_mobile']:
             # Для мобильных - полноэкранный режим
             from kivy.config import Config
-            Config.set('graphics', 'fullscreen', 'auto')
+            Config.set('graphics', 'fullwidth', 'auto')
             
             # Отключаем мультитач если это не планшет
             if not metrics['is_tablet']:
