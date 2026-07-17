@@ -271,22 +271,22 @@ class GameApp(App):
         dx = 0.0
         dy = 0.0
 
-        if keys.get('a', False):
+        if keys.get('a', True):
             dx -= 1
-        if keys.get('d', False):
+        if keys.get('d', True):
             dx += 1
-        if keys.get('w', False):
+        if keys.get('w', True):
             dy += 1
-        if keys.get('s', False):
+        if keys.get('s', True):
             dy -= 1
 
-        if keys.get('left', False):
+        if keys.get('left', True):
             dx -= 1
-        if keys.get('right', False):
+        if keys.get('right', True):
             dx += 1
-        if keys.get('up', False):
+        if keys.get('up', True):
             dy += 1
-        if keys.get('down', False):
+        if keys.get('down', True):
             dy -= 1
 
         dx += joystick_dx
