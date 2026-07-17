@@ -1,141 +1,165 @@
 from kivy.config import Config
 Config.set('graphics', 'multisamples', '0')
 Config.set('graphics', 'window_state', 'visible')
-
+from kivy.core.window import Window
+Window.softinput_mode = 'pan'
 from kivy.app import App
 from kivy.uix.widget import Widget
-from kivy.graphics import Rectangle, Color, Ellipse, Line
-from kivy.core.window import Window
+from kivy.graphics import Rectangle, Color, Ellipse
 from kivy.clock import Clock
+from kivy.uix.label import Label
+from kivy.uix.button import Button
 from math import sqrt
+from kivy.utils import platform   # <-- ВАЖНО: добавляем импорт
 
-
-class AdaptiveJoystick(Widget):
-    def __init__(self, **kwargs):
+class KeyButton(Button):
+    def __init__(self, key_name, keys_dict, **kwargs):
         super().__init__(**kwargs)
-        self.radius = 60
-        self.stick_size = 30
-        self.padding = 20
-        self.center_x = 0
-        self.center_y = 0
-        self.stick_pos = (0, 0)
-        self.vector = (0, 0)
-        self.active = False
-        self.visible = False
-
-        with self.canvas:
-            Color(0.2, 0.2, 0.2, 0.8)
-            self.bg_circle = Ellipse(pos=(0, 0), size=(1, 1))
-            Color(0.5, 0.5, 0.5, 1)
-            self.border = Line(width=2)
-            Color(0.8, 0.2, 0.2, 1)
-            self.stick = Ellipse(pos=(0, 0), size=(1, 1))
-
-        self.update_size()
-        Window.bind(on_resize=self.on_window_resize)
-        # Изначально скрыт
-        self.hide()
-
-    def on_window_resize(self, window, width, height):
-        self.update_size()
-
-    def update_size(self):
-        w, h = Window.width, Window.height
-        self.radius = max(40, min(80, min(w, h) * 0.08))
-        self.stick_size = self.radius * 0.45
-        self.padding = min(w, h) * 0.03
-
-        self.pos = (self.padding, self.padding)
-        self.center_x = self.pos[0] + self.radius
-        self.center_y = self.pos[1] + self.radius
-        self.size = (self.radius * 2, self.radius * 2)
-
-        if not self.active:
-            self.stick_pos = (self.center_x, self.center_y)
-        self.bg_circle.pos = (self.center_x - self.radius, self.center_y - self.radius)
-        self.bg_circle.size = (self.radius * 2, self.radius * 2)
-        self.border.circle = (self.center_x, self.center_y, self.radius)
-        self.stick.pos = (self.stick_pos[0] - self.stick_size/2,
-                          self.stick_pos[1] - self.stick_size/2)
-        self.stick.size = (self.stick_size, self.stick_size)
-
-        if self.active:
-            dx, dy = self.vector
-            new_x = self.center_x + dx * self.radius
-            new_y = self.center_y + dy * self.radius
-            self.stick_pos = (new_x, new_y)
-            self.stick.pos = (self.stick_pos[0] - self.stick_size/2,
-                              self.stick_pos[1] - self.stick_size/2)
-
-    def update_stick(self, touch_x, touch_y):
-        dx = touch_x - self.center_x
-        dy = touch_y - self.center_y
-        dist = sqrt(dx*dx + dy*dy)
-        if dist > self.radius:
-            dx = dx / dist * self.radius
-            dy = dy / dist * self.radius
-        self.stick_pos = (self.center_x + dx, self.center_y + dy)
-        self.vector = (dx / self.radius, dy / self.radius) if self.radius > 0 else (0, 0)
-        self.stick.pos = (self.stick_pos[0] - self.stick_size/2,
-                          self.stick_pos[1] - self.stick_size/2)
-
-    def reset_stick(self):
-        self.stick_pos = (self.center_x, self.center_y)
-        self.vector = (0, 0)
-        self.stick.pos = (self.stick_pos[0] - self.stick_size/2,
-                          self.stick_pos[1] - self.stick_size/2)
-        self.active = False
+        self.key_name = key_name
+        self.keys = keys_dict
+        self.background_color = (0.3, 0.3, 0.3, 0.6)
+        self.color = (1, 1, 1, 0.9)
+        self.font_size = 20
+        self.size_hint = (None, None)
+        self.size = (50, 50)
 
     def on_touch_down(self, touch):
-        if not self.visible:
-            return False
-        dx = touch.x - self.center_x
-        dy = touch.y - self.center_y
-        if dx*dx + dy*dy <= self.radius*self.radius:
+        if self.collide_point(*touch.pos):
+            self.keys[self.key_name] = True
+            self.background_color = (0, 0.8, 0.8, 0.8)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if self.collide_point(*touch.pos):
+            self.keys[self.key_name] = False
+            self.background_color = (0.3, 0.3, 0.3, 0.6)
+            return True
+        if self.keys.get(self.key_name, False):
+            self.keys[self.key_name] = False
+            self.background_color = (0.3, 0.3, 0.3, 0.6)
+        return super().on_touch_up(touch)
+
+
+# ---------- ДЖОЙСТИК ----------
+class Joystick(Widget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None)
+        self.size = (150, 150)
+        self.pos = (20, 20)
+        self.radius = self.width / 2
+        self.center_pos = (self.x + self.radius, self.y + self.radius)
+        self.dx = 0.0
+        self.dy = 0.0
+        self.active = False
+        with self.canvas:
+            Color(0.2, 0.2, 0.2, 0.5)
+            self.bg_circle = Ellipse(pos=self.pos, size=self.size)
+            Color(0, 0.8, 0.8, 0.9)
+            self.knob = Ellipse(pos=(self.center_pos[0] - 20, self.center_pos[1] - 20),
+                                size=(40, 40))
+        self.bind(pos=self.update_graphics, size=self.update_graphics)
+        Window.bind(on_resize=self.on_window_resize)
+
+    def on_window_resize(self, window, width, height):
+        self.pos = (20, 20)
+        self.size = (150, 150)
+
+    def update_graphics(self, *args):
+        self.radius = self.width / 2
+        self.center_pos = (self.x + self.radius, self.y + self.radius)
+        self.bg_circle.pos = self.pos
+        self.bg_circle.size = self.size
+        self._update_knob_pos()
+
+    def _update_knob_pos(self):
+        if not self.active:
+            kx = self.center_pos[0] - 20
+            ky = self.center_pos[1] - 20
+        else:
+            max_offset = self.radius * 0.8
+            kx = self.center_pos[0] + self.dx * max_offset - 20
+            ky = self.center_pos[1] + self.dy * max_offset - 20
+        self.knob.pos = (kx, ky)
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
             self.active = True
-            self.update_stick(touch.x, touch.y)
+            self._update_vector(touch.pos)
             return True
         return super().on_touch_down(touch)
 
     def on_touch_move(self, touch):
-        if self.active and self.visible:
-            self.update_stick(touch.x, touch.y)
+        if self.active:
+            self._update_vector(touch.pos)
             return True
         return super().on_touch_move(touch)
 
     def on_touch_up(self, touch):
-        if self.active and self.visible:
-            self.reset_stick()
+        if self.active:
+            self.active = False
+            self.dx = 0.0
+            self.dy = 0.0
+            self._update_knob_pos()
             return True
         return super().on_touch_up(touch)
 
-    def show(self):
-        self.visible = True
-        self.opacity = 1
-        self.disabled = False
+    def _update_vector(self, touch_pos):
+        dx = touch_pos[0] - self.center_pos[0]
+        dy = touch_pos[1] - self.center_pos[1]
+        distance = sqrt(dx*dx + dy*dy)
+        max_dist = self.radius * 0.8
+        if distance > max_dist:
+            dx = dx / distance * max_dist
+            dy = dy / distance * max_dist
+            distance = max_dist
+        if distance > 0:
+            self.dx = dx / max_dist
+            self.dy = dy / max_dist
+        else:
+            self.dx = 0.0
+            self.dy = 0.0
+        self._update_knob_pos()
 
-    def hide(self):
-        self.visible = False
-        self.opacity = 0
-        self.disabled = True
-        self.reset_stick()
+    def get_vector(self):
+        return self.dx, self.dy
 
 
+# ---------- КВАДРАТ ----------
 class AdaptiveSquare(Widget):
-    def __init__(self, joystick, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.joystick = joystick
         self.size = (100, 100)
         self.pos = (0, 0)
         with self.canvas:
             Color(0, 0.8, 0.8, 1)
             self.rect = Rectangle(pos=self.pos, size=self.size)
 
-        self.speed = 200
+        self.speed = 300
+        self.keys = {
+            'w': False, 'up': False,
+            's': False, 'down': False,
+            'a': False, 'left': False,
+            'd': False, 'right': False
+        }
 
-        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-        self._keyboard.bind(on_key_down=self._on_key_down)
+        # ========== ГЛАВНОЕ ИЗМЕНЕНИЕ: НЕ ЗАПРАШИВАЕМ КЛАВИАТУРУ НА ANDROID ==========
+        if platform != 'android':
+            self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+            self._keyboard.bind(on_key_down=self._on_key_down)
+            self._keyboard.bind(on_key_up=self._on_key_up)
+        else:
+            self._keyboard = None
+        # ==========================================================================
+
         Window.bind(on_resize=self.on_window_resize)
+
+    def _keyboard_closed(self):
+        if self._keyboard:
+            self._keyboard.unbind(on_key_down=self._on_key_down)
+            self._keyboard.unbind(on_key_up=self._on_key_up)
+            self._keyboard = None
 
     def on_window_resize(self, window, width, height):
         self.update_size_and_position()
@@ -148,27 +172,23 @@ class AdaptiveSquare(Widget):
         self.rect.pos = self.pos
         self.rect.size = self.size
 
-    def _keyboard_closed(self):
-        self._keyboard.unbind(on_key_down=self._on_key_down)
-        self._keyboard = None
-
     def _on_key_down(self, keyboard, keycode, text, modifiers):
-        # При нажатии любой клавиши немедленно скрываем джойстик
-        self.joystick.hide()
-
-        step = 10
-        x, y = self.pos
-        if keycode[1] == 'left':
-            x -= step
-        elif keycode[1] == 'right':
-            x += step
-        elif keycode[1] == 'up':
-            y += step
-        elif keycode[1] == 'down':
-            y -= step
+        if isinstance(keycode, (list, tuple)) and len(keycode) > 1:
+            key_name = keycode[1].lower()
         else:
-            return
-        self.move_to(x, y)
+            key_name = str(keycode).lower()
+        if key_name in self.keys:
+            self.keys[key_name] = True
+        return True
+
+    def _on_key_up(self, keyboard, keycode):
+        if isinstance(keycode, (list, tuple)) and len(keycode) > 1:
+            key_name = keycode[1].lower()
+        else:
+            key_name = str(keycode).lower()
+        if key_name in self.keys:
+            self.keys[key_name] = False
+        return True
 
     def move_to(self, x, y):
         w, h = Window.width, Window.height
@@ -182,48 +202,102 @@ class AdaptiveSquare(Widget):
         y = self.pos[1] + dy * self.speed * dt
         self.move_to(x, y)
 
-    def on_touch_down(self, touch):
-        # При касании квадрата показываем джойстик
-        self.joystick.show()
-        # Не перехватываем событие, чтобы джойстик тоже мог его получить
-        return super().on_touch_down(touch)
 
-
+# ---------- ИГРОВОЙ ВИДЖЕТ ----------
 class GameWidget(Widget):
-    def __init__(self, joystick, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.joystick = joystick
+        self.square = AdaptiveSquare()
+        self.add_widget(self.square)
 
-    def on_touch_down(self, touch):
-        # Любое касание экрана показывает джойстик
-        self.joystick.show()
-        return super().on_touch_down(touch)
+        self.joystick = Joystick()
+        self.add_widget(self.joystick)
+
+        self.keys = self.square.keys
+
+        wasd_positions = {
+            'w': (35, 220),
+            'a': (10, 195),
+            's': (35, 195),
+            'd': (60, 195),
+        }
+        self.wasd_buttons = []
+        for key, pos in wasd_positions.items():
+            btn = KeyButton(key, self.keys, text=key.upper())
+            btn.pos = pos
+            self.add_widget(btn)
+            self.wasd_buttons.append(btn)
+
+        arrow_positions = {
+            'up': (Window.width - 130, 70),
+            'left': (Window.width - 155, 45),
+            'down': (Window.width - 130, 45),
+            'right': (Window.width - 105, 45),
+        }
+        self.arrow_buttons = []
+        for key, pos in arrow_positions.items():
+            label = '↑' if key == 'up' else '↓' if key == 'down' else '←' if key == 'left' else '→'
+            btn = KeyButton(key, self.keys, text=label)
+            btn.pos = pos
+            self.add_widget(btn)
+            self.arrow_buttons.append(btn)
+
+        Window.bind(on_resize=self.on_window_resize)
+
+    def on_window_resize(self, window, width, height):
+        arrow_positions = {
+            'up': (width - 130, 70),
+            'left': (width - 155, 45),
+            'down': (width - 130, 45),
+            'right': (width - 105, 45),
+        }
+        for btn in self.arrow_buttons:
+            new_pos = arrow_positions.get(btn.key_name, btn.pos)
+            btn.pos = new_pos
 
 
+# ---------- ПРИЛОЖЕНИЕ ----------
 class GameApp(App):
     def build(self):
-        root = GameWidget(None)
-
-        self.joystick = AdaptiveJoystick()
-        root.add_widget(self.joystick)
-        root.joystick = self.joystick
-
-        self.square = AdaptiveSquare(self.joystick)
-        root.add_widget(self.square)
-
-        # Принудительно скрываем джойстик при старте
-        self.joystick.hide()
-
-        Clock.schedule_once(lambda dt: self.square.update_size_and_position(), 0)
-        Clock.schedule_once(lambda dt: self.joystick.update_size(), 0)
-
-        Clock.schedule_interval(self.update_joystick_movement, 1/60)
+        root = GameWidget()
+        Clock.schedule_once(lambda dt: root.square.update_size_and_position(), 0)
+        Clock.schedule_interval(self.update, 1/60)
         return root
 
-    def update_joystick_movement(self, dt):
-        vec = self.joystick.vector
-        if vec != (0, 0):
-            self.square.move_by_vector(vec[0], vec[1], dt)
+    def update(self, dt):
+        keys = self.root.square.keys
+        joystick_dx, joystick_dy = self.root.joystick.get_vector()
+
+        dx = 0.0
+        dy = 0.0
+
+        if keys.get('a', False):
+            dx -= 1
+        if keys.get('d', False):
+            dx += 1
+        if keys.get('w', False):
+            dy += 1
+        if keys.get('s', False):
+            dy -= 1
+
+        if keys.get('left', False):
+            dx -= 1
+        if keys.get('right', False):
+            dx += 1
+        if keys.get('up', False):
+            dy += 1
+        if keys.get('down', False):
+            dy -= 1
+
+        dx += joystick_dx
+        dy += joystick_dy
+
+        if dx != 0 or dy != 0:
+            length = sqrt(dx*dx + dy*dy)
+            if length > 0:
+                dx /= length
+                dy /= length
+            self.root.square.move_by_vector(dx, dy, dt)
 
 
 if __name__ == '__main__':
