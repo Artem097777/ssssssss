@@ -28,13 +28,6 @@ class KeyButton(Button):
         if self.collide_point(*touch.pos):
             self.keys[self.key_name] = True
             self.background_color = (0, 0.8, 0.8, 0.8)
-            # Подавляем вибрацию/звук на Android
-            if platform == 'android':
-                try:
-                    from android.vibrator import vibrate
-                    vibrate(0)  # 0 мс = без вибрации
-                except:
-                    pass
             return True
         return super().on_touch_down(touch)
 
@@ -147,13 +140,12 @@ class AdaptiveSquare(Widget):
             'd': False, 'right': False
         }
 
-        # Клавиатура только для ПК
-        if platform != 'android':
-            self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-            self._keyboard.bind(on_key_down=self._on_key_down)
-            self._keyboard.bind(on_key_up=self._on_key_up)
-        else:
-            self._keyboard = None
+        # ========== КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: РАЗРЕШАЕМ КЛАВИАТУРУ НА ANDROID ==========
+        # Теперь клавиатура работает на ВСЕХ платформах, включая Android
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_key_down)
+        self._keyboard.bind(on_key_up=self._on_key_up)
+        # =========================================================================
 
         Window.bind(on_resize=self.on_window_resize)
 
@@ -258,8 +250,6 @@ class GameWidget(Widget):
         Window.bind(on_resize=self.on_window_resize)
 
     def on_window_resize(self, window, width, height):
-        # Можно пересчитать позиции кнопок, но для простоты оставим как есть
-        # (при повороте экрана лучше перестроить всё, но для демонстрации достаточно)
         pass
 
 
@@ -279,37 +269,35 @@ class GameApp(App):
         dy = 0.0
 
         # WASD
-        if keys.get('a', False):
+        if keys.get('a', True):
             dx -= 1
-        if keys.get('d', False):
+        if keys.get('d', True):
             dx += 1
-        if keys.get('w', False):
+        if keys.get('w', True):
             dy += 1
-        if keys.get('s', False):
+        if keys.get('s', True):
             dy -= 1
 
         # Стрелки
-        if keys.get('left', False):
+        if keys.get('left', True):
             dx -= 1
-        if keys.get('right', False):
+        if keys.get('right', True):
             dx += 1
-        if keys.get('up', False):
+        if keys.get('up', True):
             dy += 1
-        if keys.get('down', False):
+        if keys.get('down', True):
             dy -= 1
 
         # Джойстик
         dx += joystick_dx
         dy += joystick_dy
 
-        # Нормализация
         if dx != 0 or dy != 0:
             length = sqrt(dx*dx + dy*dy)
             if length > 0:
                 dx /= length
                 dy /= length
             self.root.square.move_by_vector(dx, dy, dt)
-
 
 if __name__ == '__main__':
     GameApp().run()
