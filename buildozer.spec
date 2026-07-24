@@ -103,16 +103,16 @@ fullscreen = 0
 
 # (list) Permissions
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions.html for all the supported syntaxes and properties)
-android.permissions = INTERNET
+#android.permissions = android.permission.INTERNET, (name=android.permission.WRITE_EXTERNAL_STORAGE;maxSdkVersion=18)
 
 # (list) features (adds uses-feature -tags to manifest)
 #android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
-android.api = 33
+#android.api = 33
 
 # (int) Minimum API your APK / AAB will support.
-android.minapi = 24
+#android.minapi = 24
 
 # (int) Android SDK version to use
 #android.sdk = 20
@@ -214,7 +214,7 @@ android.minapi = 24
 # (bool) Enable AndroidX support. Enable when 'android.gradle_dependencies'
 # contains an 'androidx' package, or any package from Kotlin source.
 # android.enable_androidx requires android.api >= 28
-# android.enable_androidx = True
+#android.enable_androidx = True
 
 # (list) add java compile options
 # this can for example be necessary when importing certain java libraries using the 'android.gradle_dependencies' option
@@ -300,36 +300,6 @@ android.archs = arm64-v8a, armeabi-v7a
 # (bool) enables Android auto backup feature (Android API >=23)
 android.allow_backup = True
 
-# ============================================================
-# ========== НАСТРОЙКИ ДЛЯ ОТКЛЮЧЕНИЯ КЛАВИАТУРЫ ==========
-# ============================================================
-
-# 1. Разрешаем физическую клавиатуру (Bluetooth/USB)
-android.manifest.uses_feature = android.hardware.keyboard,true
-
-# 2. Запрещаем появление экранной клавиатуры
-android.manifest.soft_input_mode = stateHidden
-
-# 3. Запрещаем изменение состояния клавиатуры
-android.manifest.window_soft_input_mode = stateHidden|adjustPan
-
-# 4. Указываем, что у нас есть сенсорный экран
-android.manifest.uses_feature = android.hardware.touchscreen,true
-
-# 5. Дополнительная защита от экранной клавиатуры
-android.manifest.uses_feature = android.hardware.keyboard_hide,false
-
-# 6. Явно запрещаем показ клавиатуры
-android.manifest.window_soft_input_mode = stateHidden|adjustPan|adjustUnspecified
-
-# 7. Отключаем возможность запроса фокуса для ввода
-android.manifest.supports_soft_input = false
-
-# 8. Устанавливаем режим ввода по умолчанию (скрыто)
-android.manifest.default_soft_input_mode = stateHidden
-
-# ============================================================
-
 # (str) XML file for custom backup rules (see official auto backup documentation)
 # android.backup_rules =
 
@@ -365,7 +335,7 @@ android.manifest.default_soft_input_mode = stateHidden
 #p4a.fork = kivy
 
 # (str) python-for-android branch to use, defaults to master
-p4a.branch = master
+#p4a.branch = master
 
 # (str) python-for-android specific commit to use, defaults to HEAD, must be within p4a.branch
 #p4a.commit = HEAD
@@ -473,3 +443,55 @@ warn_on_root = 1
 
 # (str) Path to build output (i.e. .apk, .aab, .ipa) storage
 # bin_dir = ./bin
+
+#-----------------------------------------------------------------------------
+#   Notes about using this file:
+#
+#   Buildozer uses a variant of Python's ConfigSpec to read this file.
+#   For the basic syntax, including interpolations, see
+#       https://docs.python.org/3/library/configparser.html#supported-ini-file-structure
+#
+#   Warning: Comments cannot be used "inline" - i.e.
+#       [app]
+#       title = My Application # This is not a comment, it is part of the title.
+#
+#   Warning: Indented text is treated as a multiline string - i.e.
+#       [app]
+#       title = My Application
+#          package.name = myapp # This is all part of the title.
+#
+#   Buildozer's .spec files have some additional features:
+#
+#   Buildozer supports lists - i.e.
+#       [app]
+#       source.include_exts = py,png,jpg
+#       #                     ^ This is a list.
+#
+#       [app:source.include_exts]
+#       py
+#       png
+#       jpg
+#       # ^ This is an alternative syntax for a list.
+#
+#   Buildozer's option names are case-sensitive, unlike most .ini files.
+#
+#   Buildozer supports overriding options through environment variables.
+#   Name an environment variable as SECTION_OPTION to override a value in a .spec
+#   file.
+#
+#   Buildozer support overriding options through profiles.
+#   For example, you want to deploy a demo version of your application without
+#   HD content. You could first change the title to add "(demo)" in the name
+#   and extend the excluded directories to remove the HD content.
+#
+#       [app@demo]
+#       title = My Application (demo)
+#
+#       [app:source.exclude_patterns@demo]
+#       images/hd/*
+#
+#   Then, invoke the command line with the "demo" profile:
+#
+#        buildozer --profile demo android debug
+#
+#   Environment variable overrides have priority over profile overrides.
