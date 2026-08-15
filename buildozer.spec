@@ -42,7 +42,7 @@ version = 0.1
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy,kivy_garden.xcamera  # если используете кастомную клавиатуру
+requirements = python3,kivy
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -56,7 +56,7 @@ requirements = python3,kivy,kivy_garden.xcamera  # если использует
 
 # (list) Supported orientations
 # Valid options are: landscape, portrait, portrait-reverse, landscape-reverse, or all
-orientation = all
+orientation = landscape
 
 # (list) List of services to declare
 # This is currently only relevant to Android services.
