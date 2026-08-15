@@ -78,6 +78,7 @@ class Joystick(Widget):
             kx = self.center_pos[0] + self.dx * max_offset - 20
             ky = self.center_pos[1] + self.dy * max_offset - 20
         self.knob.pos = (kx, ky)
+        self.canvas.ask_update()  # принудительная перерисовка
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
@@ -106,6 +107,15 @@ class Joystick(Widget):
         dy = touch_pos[1] - self.center_pos[1]
         distance = sqrt(dx*dx + dy*dy)
         max_dist = self.radius * 0.8
+
+        # Мёртвая зона (10 пикселей)
+        dead_zone = 10
+        if distance < dead_zone:
+            self.dx = 0.0
+            self.dy = 0.0
+            self._update_knob_pos()
+            return
+
         if distance > max_dist:
             dx = dx / distance * max_dist
             dy = dy / distance * max_dist
@@ -140,12 +150,10 @@ class AdaptiveSquare(Widget):
             'd': False, 'right': False
         }
 
-        # ========== КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: РАЗРЕШАЕМ КЛАВИАТУРУ НА ANDROID ==========
-        # Теперь клавиатура работает на ВСЕХ платформах, включая Android
+        # Поддержка клавиатуры (физической) на всех платформах
         self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_key_down)
         self._keyboard.bind(on_key_up=self._on_key_up)
-        # =========================================================================
 
         Window.bind(on_resize=self.on_window_resize)
 
@@ -195,6 +203,11 @@ class AdaptiveSquare(Widget):
         x = self.pos[0] + dx * self.speed * dt
         y = self.pos[1] + dy * self.speed * dt
         self.move_to(x, y)
+
+    # Сброс всех клавиш (вызывается при сворачивании)
+    def reset_keys(self):
+        for key in self.keys:
+            self.keys[key] = False
 
 
 # ---------- ИГРОВОЙ ВИДЖЕТ ----------
@@ -246,11 +259,10 @@ class GameWidget(Widget):
             self.add_widget(btn)
             self.arrow_buttons.append(btn)
 
-        # Обновление при изменении размера окна
         Window.bind(on_resize=self.on_window_resize)
 
     def on_window_resize(self, window, width, height):
-        pass
+        pass  # можно пересчитать позиции кнопок, если нужно
 
 
 # ---------- ПРИЛОЖЕНИЕ ----------
@@ -265,39 +277,44 @@ class GameApp(App):
         keys = self.root.square.keys
         joystick_dx, joystick_dy = self.root.joystick.get_vector()
 
-        dx = 0.0
-        dy = 0.0
+        dx = joystick_dx
+        dy = joystick_dy
 
-        # WASD
-        if keys.get('a', True):
+        # WASD – теперь ключи возвращают False по умолчанию!
+        if keys.get('a', False):
             dx -= 1
-        if keys.get('d', True):
+        if keys.get('d', False):
             dx += 1
-        if keys.get('w', True):
+        if keys.get('w', False):
             dy += 1
-        if keys.get('s', True):
+        if keys.get('s', False):
             dy -= 1
 
         # Стрелки
-        if keys.get('left', True):
+        if keys.get('left', False):
             dx -= 1
-        if keys.get('right', True):
+        if keys.get('right', False):
             dx += 1
-        if keys.get('up', True):
+        if keys.get('up', False):
             dy += 1
-        if keys.get('down', True):
+        if keys.get('down', False):
             dy -= 1
 
-        # Джойстик
-        dx += joystick_dx
-        dy += joystick_dy
-
-        if dx != 0 or dy != 0:
-            length = sqrt(dx*dx + dy*dy)
-            if length > 0:
-                dx /= length
-                dy /= length
+        # Нормализация вектора
+        length = sqrt(dx*dx + dy*dy)
+        if length > 0:
+            dx /= length
+            dy /= length
             self.root.square.move_by_vector(dx, dy, dt)
+
+    # Корректная обработка сворачивания (клавиши не залипают)
+    def on_pause(self):
+        self.root.square.reset_keys()
+        return True
+
+    def on_resume(self):
+        pass
+
 
 if __name__ == '__main__':
     GameApp().run()
