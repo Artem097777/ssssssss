@@ -56,7 +56,7 @@ requirements = python3,kivy,kivy_garden.xcamera  # если использует
 
 # (list) Supported orientations
 # Valid options are: landscape, portrait, portrait-reverse, landscape-reverse, or all
-orientation = portrait
+orientation = all
 
 # (list) List of services to declare
 # This is currently only relevant to Android services.
