@@ -56,7 +56,7 @@ requirements = python3,kivy
 
 # (list) Supported orientations
 # Valid options are: landscape, portrait, portrait-reverse, landscape-reverse, or all
-orientation = landscape
+orientation = portrait
 
 # (list) List of services to declare
 # This is currently only relevant to Android services.
